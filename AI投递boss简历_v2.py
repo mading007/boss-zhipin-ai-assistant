@@ -512,6 +512,36 @@ def _fallback_greeting(row, profile):
             f"{title}这个岗位我很感兴趣，期待有机会进一步沟通。")
 
 
+# ---------- 开源链接：JD 明确要求时才附 ----------
+OSS_URL = 'github.com/mading007/boss-zhipin-ai-assistant'
+
+# JD 里出现这些表述，说明对方想看代码
+_OSS_ASK_PATTERN = re.compile(
+    r'开源|GitHub|github|代码仓库|项目链接|代码地址|作品集|技术博客|'
+    r'代码作品|repo\b|repository',
+    re.IGNORECASE,
+)
+
+
+def jd_wants_oss(jd_text):
+    """判断 JD 是否明确要求提供开源项目 / 代码链接。
+    用正则判定而不是交给模型，避免模型忽略这条规则（实测会忽略）。"""
+    return bool(_OSS_ASK_PATTERN.search(str(jd_text or '')))
+
+
+def _attach_oss(greeting, row):
+    """在'期待有机会进一步沟通'前插入仓库地址。已含链接则不重复加。"""
+    if not jd_wants_oss(row.get('jd', '')):
+        return greeting
+    if OSS_URL in greeting or 'github.com' in greeting.lower():
+        return greeting
+    tail = '期待有机会进一步沟通'
+    extra = f'我的项目代码在 {OSS_URL}，方便的话可以看一下。'
+    if tail in greeting:
+        return greeting.replace(tail, extra + tail, 1)
+    return greeting.rstrip('。') + '。' + extra
+
+
 def generate_greeting(row, profile):
     api_key = DEEPSEEK_CONFIG['api_key']
     if not api_key:
@@ -552,7 +582,7 @@ def generate_greeting(row, profile):
 {project_rule}
 3. 第三句表达"能快速上手"这个岗位的工作，用"期待有机会进一步沟通"结尾。
 4. 不要写"面试回复率提升至XX%"这类个人求职数据。
-5. 不要出现"GitHub""开源""代码可查"等词。
+5. 不要出现"GitHub""开源""代码可查""代码仓库"等词，也不要写任何网址。
 6. 不要罗列技能清单，要像人在说话。
 7. 语气：正式、专业、诚恳，不要浮夸。
 8. 直接输出招呼语正文，不要加任何额外说明或引号。
@@ -577,12 +607,12 @@ def generate_greeting(row, profile):
         )
         if resp.status_code == 200:
             text = resp.json()['choices'][0]['message']['content'].strip()
-            return text.strip('"').strip()
+            return _attach_oss(text.strip('"').strip(), row)
         print(f" [HTTP {resp.status_code} → 用模板]", end='')
-        return _fallback_greeting(row, profile)
+        return _attach_oss(_fallback_greeting(row, profile), row)
     except Exception as e:
         print(f" [异常 {type(e).__name__} → 用模板]", end='')
-        return _fallback_greeting(row, profile)
+        return _attach_oss(_fallback_greeting(row, profile), row)
 
 
 # ============================================================
