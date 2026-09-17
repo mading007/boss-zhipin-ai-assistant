@@ -472,44 +472,49 @@ def score_row(row, profile):
 # ============================================================
 # 第五步：招呼语生成（按赛道路由项目，不再"默认讲爬虫"）
 # ============================================================
-def _fallback_greeting(row, profile):
+def _fallback_greeting(row, profile, opening=None):
     """API 不可用时的降级模板。按岗位特征挑最贴的项目讲，
-    并且句子结构做了变化，避免 40 条招呼语长得一模一样（那是群发特征，会被风控盯）。"""
+    开头用 _pick_opening 随机指定的那句（避免 40 条开头一模一样）。"""
     name = '马丁'
     title = row.get('title', '该岗位')
     blob = f"{title} {row.get('jd', '')}".lower()
+    opening = opening or f"您好，我是{name}。"
 
     if profile['track'] == 'ai':
         if any(k in blob for k in ['agent', '智能体', 'mcp', '工具调用', 'workflow']):
-            return (f"您好，我是{name}。我做过一个完整的 AI 应用闭环："
+            body = (f"我做过一个完整的 AI 应用闭环："
                     f"数据采集 + 匹配排序 + 调用大模型 API 生成内容，并用页面面板承载整个流程，"
-                    f"对把模型能力接进实际业务这件事比较熟。看到贵司{title}的岗位，"
-                    f"想聊聊具体的技术方案，期待有机会进一步沟通。")
-        if any(k in blob for k in ['prompt', '图像', 'aigc', '风格', '生图']):
-            return (f"您好，我是{name}。我在 Prompt 工程上做过比较系统的实践——"
+                    f"对把模型能力接进实际业务这件事比较熟。想聊聊具体的技术方案，"
+                    f"期待有机会进一步沟通。")
+        elif any(k in blob for k in ['prompt', '图像', 'aigc', '风格', '生图']):
+            body = (f"我在 Prompt 工程上做过比较系统的实践——"
                     f"用结构化模板控制多个维度，把生成结果的一致性从 60% 提到了 90% 以上，"
-                    f"也沉淀了一套检查 SOP。{title}这个方向和我的经验比较对口，"
+                    f"也沉淀了一套检查 SOP。这个方向和我的经验比较对口，"
                     f"希望能有机会进一步沟通。")
-        return (f"您好，我是{name}。我基于 LangChain + Chroma 独立搭过一套 RAG 问答系统，"
-                f"从文档切分、向量化存储到语义检索和答案溯源整条链路都自己走过一遍，"
-                f"能把大模型能力落到具体业务里。{title}这个岗位我很感兴趣，"
-                f"期待有机会进一步沟通。")
+        else:
+            body = (f"我基于 LangChain + Chroma 独立搭过一套 RAG 问答系统，"
+                    f"从文档切分、向量化存储到语义检索和答案溯源整条链路都自己走过一遍，"
+                    f"能把大模型能力落到具体业务里。这个岗位我很感兴趣，"
+                    f"期待有机会进一步沟通。")
+    else:
+        # QA 赛道
+        if any(k in blob for k in ['selenium', 'playwright', 'appium', 'ui自动化', '元素定位']):
+            body = (f"我写过基于协议控制浏览器的自动化程序，"
+                    f"包括定位页面元素、稳定抓取结构化数据，也踩过不少元素失效和超时的坑，"
+                    f"对 UI 自动化的稳定性问题有实际体会。这个方向我想深入做，"
+                    f"期待有机会进一步沟通。")
+        elif any(k in blob for k in ['接口测试', 'api测试', 'postman', 'requests', '自动化测试']):
+            body = (f"我日常用 Python 做接口调用和数据处理，"
+                    f"熟悉 HTTP 协议和返回结构的校验，也独立写过完整的自动化脚本，"
+                    f"包括异常分支的处理。这个岗位和我的方向比较一致，"
+                    f"期待有机会进一步沟通。")
+        else:
+            body = (f"我做过一套无人值守的桌面自动化程序——"
+                    f"用图像识别定位界面元素、模拟操作完成任务，主动处理了弹窗等异常情况，"
+                    f"还打包成 exe 让非技术的同事直接用，上线后每天省下 30 分钟人工操作。"
+                    f"这个岗位我很感兴趣，期待有机会进一步沟通。")
 
-    # QA 赛道
-    if any(k in blob for k in ['selenium', 'playwright', 'appium', 'ui自动化', '元素定位']):
-        return (f"您好，我是{name}。我写过基于协议控制浏览器的自动化程序，"
-                f"包括定位页面元素、稳定抓取结构化数据，也踩过不少元素失效和超时的坑，"
-                f"对 UI 自动化的稳定性问题有实际体会。{title}这个方向我想深入做，"
-                f"期待有机会进一步沟通。")
-    if any(k in blob for k in ['接口测试', 'api测试', 'postman', 'requests', '自动化测试']):
-        return (f"您好，我是{name}。我日常用 Python 做接口调用和数据处理，"
-                f"熟悉 HTTP 协议和返回结构的校验，也独立写过完整的自动化脚本，"
-                f"包括异常分支的处理。{title}这个岗位和我的方向比较一致，"
-                f"期待有机会进一步沟通。")
-    return (f"您好，我是{name}。我做过一套无人值守的桌面自动化程序——"
-            f"用图像识别定位界面元素、模拟操作完成任务，主动处理了弹窗等异常情况，"
-            f"还打包成 exe 让非技术的同事直接用，上线后每天省下 30 分钟人工操作。"
-            f"{title}这个岗位我很感兴趣，期待有机会进一步沟通。")
+    return opening + body
 
 
 # ---------- 开源链接：JD 明确要求时才附 ----------
@@ -529,6 +534,24 @@ def jd_wants_oss(jd_text):
     return bool(_OSS_ASK_PATTERN.search(str(jd_text or '')))
 
 
+MAX_GREETING_LEN = 110
+
+
+def _cap_length(text, limit=MAX_GREETING_LEN):
+    """话术超长时，回退到 limit 内最后一个句末，避免硬切半句话。
+    实测提示词里写多遍字数限制，模型照样写到 115 字，所以代码兜底。"""
+    text = str(text or '').strip()
+    if len(text) <= limit:
+        return text
+    head = text[:limit]
+    # 优先在句末断开
+    for ch in ['。', '！', '？', '；']:
+        idx = head.rfind(ch)
+        if idx >= limit * 0.5:
+            return head[:idx + 1]
+    return head.rstrip('，,、 ') + '。'
+
+
 def _attach_oss(greeting, row):
     """在'期待有机会进一步沟通'前插入仓库地址。已含链接则不重复加。"""
     if not jd_wants_oss(row.get('jd', '')):
@@ -542,10 +565,51 @@ def _attach_oss(greeting, row):
     return greeting.rstrip('。') + '。' + extra
 
 
+# ---------- 招呼语开头：由 Python 随机指定，不交给模型选 ----------
+# 实测把「开头要多样化」写进提示词时，模型会 100% 固定用其中一种（8/8 全一样），
+# 所以改成代码随机挑选再通过 {opening} 注入提示词，模型只负责照抄。
+#
+# 同一批生成 40 条时，按顺序轮换这 3 种再打乱，保证分布均匀而非纯随机扎堆。
+_OPENINGS = [
+    '您好，我是马丁。',
+    '您好，看到贵司在招{title}。',
+    '您好，我是马丁，看到贵司的{title}岗位。',
+]
+# 只有 JD 明确写了校招/应届 时才允许用这一种
+_OPENING_FRESH = '我是马丁，2026届电子信息工程专业，想投递{title}。'
+_FRESH_PATTERN = re.compile(r'应届|校招|校园招聘|欢迎应届')
+_opening_seq = []
+_opening_lock = None
+
+
+def _pick_opening(row):
+    """按赛道路由 + 轮换 的方式挑一个开头，并填入真实岗位名。"""
+    global _opening_lock, _opening_seq
+    import threading
+    if _opening_lock is None:
+        _opening_lock = threading.Lock()
+
+    title = str(row.get('title', '该岗位') or '该岗位').strip()
+    opts = list(_OPENINGS)
+    if _FRESH_PATTERN.search(str(row.get('jd', ''))):
+        opts.append(_OPENING_FRESH)
+
+    with _opening_lock:
+        if not _opening_seq:
+            # 新一批：轮换序列打乱，保证每种开头都被均匀用到
+            import random
+            n = len(opts)
+            _opening_seq = [opts[i % n] for i in range(n * 4)]
+            random.shuffle(_opening_seq)
+        tpl = _opening_seq.pop(0)
+    return tpl.replace('{title}', title)
+
+
 def generate_greeting(row, profile):
+    opening = _pick_opening(row)   # 先定开头，保证降级时也用同一句
     api_key = DEEPSEEK_CONFIG['api_key']
     if not api_key:
-        return _fallback_greeting(row, profile)
+        return _attach_oss(_cap_length(_fallback_greeting(row, profile, opening)), row)
 
     title = row.get('title', '该岗位')
     jd = row.get('jd', '') or ''
@@ -566,10 +630,13 @@ def generate_greeting(row, profile):
    - JD 里明确出现"接口测试""API测试""requests""Postman" → 重点讲你做过的API调用与数据结构化经验，并说明你熟悉HTTP协议与接口断言
    注意：本赛道不要主动讲大模型、RAG，除非 JD 明确要求。"""
 
-    prompt = f"""请根据以下信息，为求职者撰写一段发给HR的打招呼语（60-90字）：
+    # 画像摘要只截前 320 字：塞满 4 个项目时模型会贪心地全写进去，导致话术超长
+    profile_brief = profile['personal_summary'].strip()[:320]
+
+    prompt = f"""请根据以下信息，为求职者撰写一段发给HR的打招呼语（80-95字，不要超过100字）：
 
 【求职者背景】
-{profile['personal_summary'].strip()}
+{profile_brief}
 
 【目标岗位】
 公司：{company}
@@ -577,7 +644,8 @@ def generate_greeting(row, profile):
 岗位描述：{jd_excerpt}
 
 【要求】
-1. 称呼统一用"您好"。第一句直接说："我是马丁。"
+1. **开头必须用下面指定的这一句，原样照抄，不要改写、不要换别的说法：**
+   「{opening}」
    **不要出现"2026届""应届生""本科毕业生"等身份标签**，除非 JD 里明确写了"欢迎应届生""校招""应届"。
 {project_rule}
 3. 第三句表达"能快速上手"这个岗位的工作，用"期待有机会进一步沟通"结尾。
@@ -585,7 +653,7 @@ def generate_greeting(row, profile):
 5. 不要出现"GitHub""开源""代码可查""代码仓库"等词，也不要写任何网址。
 6. 不要罗列技能清单，要像人在说话。
 7. 语气：正式、专业、诚恳，不要浮夸。
-8. 直接输出招呼语正文，不要加任何额外说明或引号。
+8. 直接输出招呼语正文，不要加任何额外说明或引号。总长度控制在 100 字以内。
 
 招呼语："""
 
@@ -604,15 +672,18 @@ def generate_greeting(row, profile):
                 'max_tokens': 300,
             },
             timeout=20,
+            # DeepSeek 是国内服务，必须绕过系统代理。
+            # 走代理会被绕到境外出口，导致 SSL 握手被中断（实测 SSLError）。
+            proxies={'http': None, 'https': None},
         )
         if resp.status_code == 200:
             text = resp.json()['choices'][0]['message']['content'].strip()
-            return _attach_oss(text.strip('"').strip(), row)
+            return _attach_oss(_cap_length(text.strip('"').strip()), row)
         print(f" [HTTP {resp.status_code} → 用模板]", end='')
-        return _attach_oss(_fallback_greeting(row, profile), row)
+        return _attach_oss(_cap_length(_fallback_greeting(row, profile, opening)), row)
     except Exception as e:
         print(f" [异常 {type(e).__name__} → 用模板]", end='')
-        return _attach_oss(_fallback_greeting(row, profile), row)
+        return _attach_oss(_cap_length(_fallback_greeting(row, profile, opening)), row)
 
 
 # ============================================================
