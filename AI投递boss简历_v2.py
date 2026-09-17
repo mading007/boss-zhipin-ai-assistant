@@ -520,10 +520,23 @@ def _fallback_greeting(row, profile, opening=None):
 # ---------- 开源链接：JD 明确要求时才附 ----------
 OSS_URL = 'github.com/mading007/boss-zhipin-ai-assistant'
 
-# JD 里出现这些表述，说明对方想看代码
+# JD 里出现这些，才说明对方真的想看你的代码/作品集。
+#
+# 注意：不能只匹配"开源""GitHub"两个词——实测大量岗位只是在说
+# "熟悉开源软件的使用""采用开源的开发模式""跟踪开源工具"
+# 或"会使用 GitHub 平台"（技能要求），这些都不该附链接。
+# 所以要求「动作词 + 作品词」同时出现。
 _OSS_ASK_PATTERN = re.compile(
-    r'开源|GitHub|github|代码仓库|项目链接|代码地址|作品集|技术博客|'
-    r'代码作品|repo\b|repository',
+    # ① 动作词 + 作品词（"请提供 GitHub 仓库""欢迎附作品截图"）
+    r'(提供|附上|附|请附|请提供|给出|展示|欢迎附|注明)[^。；\n]{0,24}'
+    r'(开源|GitHub|github|代码仓库|代码地址|作品集|作品|Demo|演示链接|演示录屏|项目链接|项目文档|博客)'
+    r'|'
+    # ② 作品词 + 明确指向作品的后缀（"作品集、项目文档、GitHub"里的"作品集"，"开源项目经验"）
+    r'(作品集|开源项目|开源贡献|代码仓库|GitHub\s*仓库|Demo)[^。；\n]{0,16}'
+    r'(优先|者优先|加分|可查|链接|地址|经验|经历|展示|公开|提交|附带)'
+    r'|'
+    # ③ "有...作品/开源项目" 这类要求，作品词必须带"可展示/可公开"等限定
+    r'(有|具备)[^。；\n]{0,20}(开源项目|开源贡献|作品集|可公开展示|可展示的作品|github)',
     re.IGNORECASE,
 )
 
@@ -550,6 +563,12 @@ def _cap_length(text, limit=MAX_GREETING_LEN):
         if idx >= limit * 0.5:
             return head[:idx + 1]
     return head.rstrip('，,、 ') + '。'
+
+
+def _finalize(text, row, opening_unused=None):
+    """统一收口：先决定要不要附仓库链接，再做长度兜底。
+    顺序很重要——反过来的话，附加的链接会把总长度顶超上限。"""
+    return _cap_length(_attach_oss(str(text or '').strip(), row))
 
 
 def _attach_oss(greeting, row):
@@ -609,7 +628,7 @@ def generate_greeting(row, profile):
     opening = _pick_opening(row)   # 先定开头，保证降级时也用同一句
     api_key = DEEPSEEK_CONFIG['api_key']
     if not api_key:
-        return _attach_oss(_cap_length(_fallback_greeting(row, profile, opening)), row)
+        return _finalize(_fallback_greeting(row, profile, opening), row)
 
     title = row.get('title', '该岗位')
     jd = row.get('jd', '') or ''
@@ -678,12 +697,12 @@ def generate_greeting(row, profile):
         )
         if resp.status_code == 200:
             text = resp.json()['choices'][0]['message']['content'].strip()
-            return _attach_oss(_cap_length(text.strip('"').strip()), row)
+            return _finalize(text.strip('"').strip(), row)
         print(f" [HTTP {resp.status_code} → 用模板]", end='')
-        return _attach_oss(_cap_length(_fallback_greeting(row, profile, opening)), row)
+        return _finalize(_fallback_greeting(row, profile, opening), row)
     except Exception as e:
         print(f" [异常 {type(e).__name__} → 用模板]", end='')
-        return _attach_oss(_cap_length(_fallback_greeting(row, profile, opening)), row)
+        return _finalize(_fallback_greeting(row, profile, opening), row)
 
 
 # ============================================================
