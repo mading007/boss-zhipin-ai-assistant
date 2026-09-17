@@ -473,46 +473,17 @@ def score_row(row, profile):
 # 第五步：招呼语生成（按赛道路由项目，不再"默认讲爬虫"）
 # ============================================================
 def _fallback_greeting(row, profile, opening=None):
-    """API 不可用时的降级模板。按岗位特征挑最贴的项目讲，
-    开头用 _pick_opening 随机指定的那句（避免 40 条开头一模一样）。"""
+    """API 不可用时的降级模板。开头与项目都沿用 Python 侧的选定结果，
+    避免 API 挂掉时 40 条话术开头和正文全都一样。"""
     name = '马丁'
-    title = row.get('title', '该岗位')
-    blob = f"{title} {row.get('jd', '')}".lower()
     opening = opening or f"您好，我是{name}。"
+    proj, _ = _pick_project(row, profile)
 
-    if profile['track'] == 'ai':
-        if any(k in blob for k in ['agent', '智能体', 'mcp', '工具调用', 'workflow']):
-            body = (f"我做过一个完整的 AI 应用闭环："
-                    f"数据采集 + 匹配排序 + 调用大模型 API 生成内容，并用页面面板承载整个流程，"
-                    f"对把模型能力接进实际业务这件事比较熟。想聊聊具体的技术方案，"
-                    f"期待有机会进一步沟通。")
-        elif any(k in blob for k in ['prompt', '图像', 'aigc', '风格', '生图']):
-            body = (f"我在 Prompt 工程上做过比较系统的实践——"
-                    f"用结构化模板控制多个维度，把生成结果的一致性从 60% 提到了 90% 以上，"
-                    f"也沉淀了一套检查 SOP。这个方向和我的经验比较对口，"
-                    f"希望能有机会进一步沟通。")
-        else:
-            body = (f"我基于 LangChain + Chroma 独立搭过一套 RAG 问答系统，"
-                    f"从文档切分、向量化存储到语义检索和答案溯源整条链路都自己走过一遍，"
-                    f"能把大模型能力落到具体业务里。这个岗位我很感兴趣，"
-                    f"期待有机会进一步沟通。")
+    if proj:
+        body = (f"我在{proj['name']}上做过完整落地——{proj['desc']}。"
+                f"这个岗位我很感兴趣，期待有机会进一步沟通。")
     else:
-        # QA 赛道
-        if any(k in blob for k in ['selenium', 'playwright', 'appium', 'ui自动化', '元素定位']):
-            body = (f"我写过基于协议控制浏览器的自动化程序，"
-                    f"包括定位页面元素、稳定抓取结构化数据，也踩过不少元素失效和超时的坑，"
-                    f"对 UI 自动化的稳定性问题有实际体会。这个方向我想深入做，"
-                    f"期待有机会进一步沟通。")
-        elif any(k in blob for k in ['接口测试', 'api测试', 'postman', 'requests', '自动化测试']):
-            body = (f"我日常用 Python 做接口调用和数据处理，"
-                    f"熟悉 HTTP 协议和返回结构的校验，也独立写过完整的自动化脚本，"
-                    f"包括异常分支的处理。这个岗位和我的方向比较一致，"
-                    f"期待有机会进一步沟通。")
-        else:
-            body = (f"我做过一套无人值守的桌面自动化程序——"
-                    f"用图像识别定位界面元素、模拟操作完成任务，主动处理了弹窗等异常情况，"
-                    f"还打包成 exe 让非技术的同事直接用，上线后每天省下 30 分钟人工操作。"
-                    f"这个岗位我很感兴趣，期待有机会进一步沟通。")
+        body = "我做过与这个岗位方向相关的完整项目，能独立把事情落地。期待有机会进一步沟通。"
 
     return opening + body
 
@@ -600,6 +571,103 @@ _FRESH_PATTERN = re.compile(r'应届|校招|校园招聘|欢迎应届')
 _opening_seq = []
 _opening_lock = None
 
+# ---------- 主打项目：同样由 Python 决定，不交给模型 ----------
+# 每个项目配一组「JD 命中词」。命中最多者优先；都不命中时按顺序轮换，
+# 避免 40 条话术全都讲同一个项目（实测同一批 10 条全讲金融终端，很像群发）。
+_PROJECTS = {
+    'ai': [
+        {
+            'name': 'RAG论文问答系统',
+            'desc': '基于 LangChain + Chroma + BGE Embedding 搭的 RAG 系统，'
+                    '走通文档加载、文本切分、向量化存储、语义检索到答案溯源的全链路',
+            'keys': ['rag', 'langchain', 'chroma', '向量', '知识库', '语义检索',
+                     'embedding', '召回', '检索增强'],
+        },
+        {
+            'name': '智能求职助手',
+            'desc': 'Chrome DevTools Protocol 采集岗位数据，TF-IDF 匹配排序，'
+                    '调大模型 API 生成差异化内容，用 HTML 面板承载整个流程，形成完整 AI 应用闭环',
+            'keys': ['agent', '智能体', 'mcp', '工具调用', 'workflow', '编排',
+                     'function calling', '多轮'],
+        },
+        {
+            'name': 'AI图像风格统一生成',
+            'desc': '设计结构化 Prompt 模板做多维度控制（光源、色调、景别、场景），'
+                    '把生成结果的一致性和可控性提升到可用水平，并沉淀了检查 SOP',
+            'keys': ['prompt', '提示词', 'aigc', '图像', '生图', '风格', '多模态', '文生图'],
+        },
+    ],
+    'qa': [
+        {
+            'name': '金融终端自动化导出系统',
+            'desc': '用「图像识别定位元素 + 模拟键鼠」实现无人值守的定时导出，'
+                    '主动处理了弹窗等异常分支，打包成 exe 让非技术同事直接用，'
+                    '上线后每天省下 30 分钟人工操作、数据零遗漏',
+            'keys': ['自动化脚本', '定时任务', '无人值守', 'windows', '桌面',
+                     'exe', '批量处理', '运维'],
+        },
+        {
+            'name': '智能求职助手',
+            'desc': '基于 Chrome DevTools Protocol 控制浏览器，定位页面元素、'
+                    '稳定采集结构化数据，并用 TF-IDF 与余弦相似度做匹配排序',
+            'keys': ['selenium', 'playwright', 'appium', 'ui自动化', '元素定位',
+                     '爬虫', '抓取', 'cdp', 'chromedriver', 'web自动化'],
+        },
+        {
+            'name': '接口联调与数据处理',
+            'desc': '日常用 Python 做接口调用与数据处理，熟悉 HTTP 协议、'
+                    '请求与返回结构的校验，独立写过带异常分支处理的完整自动化脚本',
+            # 注意：这里只放「接口测试」这个专有说法。
+            # 早期误放了 'http'、'requests' 等泛词，导致几乎所有测试岗都被判成这一项（实测占 50%）。
+            'keys': ['接口测试', '接口自动化', 'api测试', 'api自动化',
+                     'postman', 'jmeter', '接口联调'],
+        },
+        {
+            'name': 'RAG论文问答系统',
+            'desc': 'LangChain + Chroma 搭建的检索增强问答系统，'
+                    '对链路的每个环节都做过验证与对比，能把 AI 能力落进产品',
+            'keys': ['大模型', 'llm', 'ai测试', '模型评测', 'rag',
+                     'ai应用', '智能体', 'agent', 'prompt', '评测'],
+        },
+    ],
+}
+_project_cursor = {}
+
+# 关键词全都没命中时，默认讲哪个项目（QA 赛道）。
+# 这个项目在测试岗上是硬通货（无人值守 + 异常处理 + 打包交付），
+# 想换成别的就把名字改成 _PROJECTS['qa'] 里任意一项的 'name'。
+DEFAULT_QA_PROJECT = '金融终端自动化导出系统'
+
+
+def _pick_project(row, profile):
+    """按 JD 关键词选主打项目；都不命中时用默认项目，并按顺序轮换保证分布。"""
+    global _project_cursor
+    jd = str(row.get('jd', '')).lower()   # 只看 JD，标题里带自己项目名会造成自匹配
+    specs = _PROJECTS.get(profile['track'], [])
+    if not specs:
+        return None, 0
+
+    scored = []
+    for i, p in enumerate(specs):
+        hits = sum(1 for k in p['keys'] if k in jd)
+        scored.append((hits, i, p))
+
+    best_hits = max((s[0] for s in scored), default=0)
+    if best_hits > 0:
+        # 命中最多者优先；并列时轮换，避免永远只选第一个
+        tied = [s for s in scored if s[0] == best_hits]
+        cur = _project_cursor.get(profile['track'], 0)
+        chosen = tied[cur % len(tied)]
+        _project_cursor[profile['track']] = cur + 1
+        return chosen[2], best_hits
+
+    # 无命中：用默认项目（找得到就用，找不到退回轮换）
+    default_name = DEFAULT_QA_PROJECT if profile['track'] == 'qa' else specs[0]['name']
+    for p in specs:
+        if p['name'] == default_name:
+            return p, 0
+    return specs[0], 0
+
 
 def _pick_opening(row):
     """按赛道路由 + 轮换 的方式挑一个开头，并填入真实岗位名。"""
@@ -635,19 +703,17 @@ def generate_greeting(row, profile):
     jd_excerpt = jd[:1500]
     company = row.get('boss_name', '') or ''
 
-    if profile['track'] == 'ai':
-        project_rule = f"""2. 第二句讲你的主打项目：{profile['main_project']}（{profile['main_project_desc']}）。
-   例外（仅当满足条件时才换）：
-   - JD 里明确出现"Prompt""图像生成""AIGC图像""风格" → 换成「AI图像风格统一生成」项目（结构化Prompt模板多维控制，风格统一度60%→90%）
-   - JD 里明确出现"Agent""智能体""工具调用""MCP""workflow" 且**没有**出现"RAG""知识库" → 换成「智能求职助手」项目（CDP采集 + 匹配算法 + 大模型API生成话术）
-   注意：本赛道默认**不要**主动讲爬虫、数据采集。"""
+    # 主打项目由 Python 选定（按 JD 关键词优先，无命中则轮换），模型只负责把它讲自然
+    proj, proj_hits = _pick_project(row, profile)
+    if proj:
+        project_rule = (
+            f"2. **第二句必须讲下面这个指定项目，不要换成你背景里别的项目：**\n"
+            f"   项目名：{proj['name']}\n"
+            f"   素材：{proj['desc']}\n"
+            f"   讲一句就够，突出你实际动手做过、能落地，不要罗列技术名词。"
+        )
     else:
-        project_rule = f"""2. 第二句讲你的主打项目：{profile['main_project']}（{profile['main_project_desc']}）。
-   重点体现：能独立设计自动化方案、会处理异常分支、有工程化意识（打包exe、非技术同事能用）。
-   例外（仅当满足条件时才换）：
-   - JD 里明确出现"UI自动化""Selenium""Playwright""Appium""元素定位" → 换成「智能求职助手」项目（基于CDP控制浏览器、定位页面元素、稳定采集结构化数据）
-   - JD 里明确出现"接口测试""API测试""requests""Postman" → 重点讲你做过的API调用与数据结构化经验，并说明你熟悉HTTP协议与接口断言
-   注意：本赛道不要主动讲大模型、RAG，除非 JD 明确要求。"""
+        project_rule = "2. 第二句讲一个你最相关的项目经历，突出你实际动手做过、能落地。"
 
     # 画像摘要只截前 320 字：塞满 4 个项目时模型会贪心地全写进去，导致话术超长
     profile_brief = profile['personal_summary'].strip()[:320]
