@@ -8,7 +8,7 @@
   <!-- 流程节点 -->
   <!-- 步骤 1 -->
   <rect x="30" y="90" width="190" height="112" rx="10" fill="#f5f5f7" stroke="#d2d2d7"/>
-  <text x="125" y="117" font-size="13" font-weight="700" fill="#1d1d1f" text-anchor="middle">① 采集岗位</text>
+  <text x="125" y="117" font-size="13" font-weight="700" fill="#1d1d1f" text-anchor="middle">① 岗位采集</text>
   <text x="125" y="139" font-size="11" fill="#6e6e73" text-anchor="middle">CDP 控制专用 Chrome</text>
   <text x="125" y="157" font-size="11" fill="#6e6e73" text-anchor="middle">抓列表 + 详情 JD</text>
   <rect x="52" y="170" width="146" height="20" rx="10" fill="#e8f0fe"/>
@@ -19,9 +19,9 @@
 
   <!-- 步骤 2 -->
   <rect x="258" y="90" width="190" height="112" rx="10" fill="#f5f5f7" stroke="#d2d2d7"/>
-  <text x="353" y="117" font-size="13" font-weight="700" fill="#1d1d1f" text-anchor="middle">② 合并 JD</text>
-  <text x="353" y="139" font-size="11" fill="#6e6e73" text-anchor="middle">按 job_id 关联详情</text>
-  <text x="353" y="157" font-size="11" fill="#6e6e73" text-anchor="middle">去重 + 保留最新</text>
+  <text x="353" y="117" font-size="13" font-weight="700" fill="#1d1d1f" text-anchor="middle">② 数据清洗与匹配</text>
+  <text x="353" y="139" font-size="11" fill="#6e6e73" text-anchor="middle">关联去重 + 解析标签</text>
+  <text x="353" y="157" font-size="11" fill="#6e6e73" text-anchor="middle">中文分词 + 相似度计算</text>
   <rect x="280" y="170" width="146" height="20" rx="10" fill="#fff4e5"/>
   <text x="353" y="184" font-size="10" fill="#b26a00" text-anchor="middle">没有 JD 就没有语义分</text>
 
@@ -29,21 +29,21 @@
 
   <!-- 步骤 3 -->
   <rect x="486" y="90" width="190" height="112" rx="10" fill="#f5f5f7" stroke="#d2d2d7"/>
-  <text x="581" y="117" font-size="13" font-weight="700" fill="#1d1d1f" text-anchor="middle">③ 打分排序</text>
-  <text x="581" y="139" font-size="11" fill="#6e6e73" text-anchor="middle">8 个维度加权</text>
-  <text x="581" y="157" font-size="11" fill="#6e6e73" text-anchor="middle">按赛道分池</text>
-  <rect x="508" y="170" width="146" height="20" rx="10" fill="#e7f7ec"/>
-  <text x="581" y="184" font-size="10" fill="#1e7b3c" text-anchor="middle">本地计算，不联网</text>
+  <text x="581" y="117" font-size="13" font-weight="700" fill="#1d1d1f" text-anchor="middle">③ 生成话术</text>
+  <text x="581" y="139" font-size="11" fill="#6e6e73" text-anchor="middle">按 JD 定制，逐条不同</text>
+  <text x="581" y="157" font-size="11" fill="#6e6e73" text-anchor="middle">开头与项目轮换</text>
+  <rect x="508" y="170" width="146" height="20" rx="10" fill="#f3e8fd"/>
+  <text x="581" y="184" font-size="10" fill="#7b1fa2" text-anchor="middle">约 80 次调用 / 批</text>
 
   <path d="M680 146 L708 146" stroke="#c7c7cc" stroke-width="2" marker-end="url(#ar)"/>
 
   <!-- 步骤 4 -->
-  <rect x="714" y="90" width="156" height="112" rx="10" fill="#f5f5f7" stroke="#d2d2d7"/>
-  <text x="792" y="117" font-size="13" font-weight="700" fill="#1d1d1f" text-anchor="middle">④ 生成话术</text>
-  <text x="792" y="139" font-size="11" fill="#6e6e73" text-anchor="middle">大模型 API</text>
-  <text x="792" y="157" font-size="11" fill="#6e6e73" text-anchor="middle">按 JD 定制</text>
-  <rect x="729" y="170" width="126" height="20" rx="10" fill="#f3e8fd"/>
-  <text x="792" y="184" font-size="10" fill="#7b1fa2" text-anchor="middle">约 80 次调用 / 批</text>
+  <rect x="714" y="90" width="156" height="112" rx="10" fill="#eefdf3" stroke="#a8dfc0"/>
+  <text x="792" y="117" font-size="13" font-weight="700" fill="#1d1d1f" text-anchor="middle">④ 生成投递面板</text>
+  <text x="792" y="139" font-size="11" fill="#6e6e73" text-anchor="middle">可排序、可标记</text>
+  <text x="792" y="157" font-size="11" fill="#6e6e73" text-anchor="middle">响应式网页</text>
+  <rect x="729" y="170" width="126" height="20" rx="10" fill="#e7f7ec"/>
+  <text x="792" y="184" font-size="10" fill="#1e7b3c" text-anchor="middle">本地计算，不联网</text>
 
   <!-- 输出物 -->
   <text x="30" y="248" font-size="13" font-weight="700" fill="#1d1d1f">产出</text>
