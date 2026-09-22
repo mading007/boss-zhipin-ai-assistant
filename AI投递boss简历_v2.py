@@ -878,6 +878,19 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     .btn-ignore { background: #ff9800; color: white; border: none; padding: 5px 10px; border-radius: 4px; cursor: pointer; font-size:13px;}
     .toast { position: fixed; bottom: 20px; right: 20px; background: #2ecc71; color: white; padding: 10px 20px; border-radius: 6px; display: none; z-index: 999; }
     .greeting-preview { font-size: 12px; color: #777; max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: inline-block; vertical-align:middle;}
+
+    /* 操作列：按钮一行 + 完整招呼语预览 */
+    td.op-cell { min-width: 340px; }
+    .op-row { display: flex; gap: 4px; flex-wrap: wrap; margin-bottom: 6px; }
+    .greeting-text {
+        font-size: 11.5px; line-height: 1.65; color: #5a5a5f;
+        background: #f7f8fa; border-left: 3px solid #c7d2e0;
+        border-radius: 4px; padding: 6px 9px;
+        max-width: 340px; white-space: normal; word-break: break-word;
+        user-select: text; cursor: text;
+    }
+    .row-done .greeting-text { background: #f0f0f0; border-left-color: #d0d0d0; color: #aaa; }
+    .row-ignored .greeting-text { background: #fff8e1; border-left-color: #e0c080; }
     .btn-done.marked { background: #6c757d; cursor: not-allowed; }
     .row-done td { background: #f0f0f0; color: #999; }
     .row-ignored td { background: #fff3cd; color: #856404; }
@@ -1128,11 +1141,13 @@ def build_html(df, profile):
         <td>{salary}</td>
         <td>{district}</td>
         <td>{bonus_txt}</td>
-        <td>
-            <button class="btn-copy" data-greeting="{greeting}">📋 仅复制</button>
-            <button class="btn-done" data-job-id="{job_id}" data-link="{html.escape(link, quote=True)}" data-greeting="{greeting}">📋 一键投递</button>
-            <button class="btn-ignore" data-job-id="{job_id}">👎 不感兴趣</button>
-            <div class="greeting-preview" title="{greeting}">{preview}…</div>
+        <td class="op-cell">
+            <div class="op-row">
+                <button class="btn-copy" data-greeting="{greeting}">📋 仅复制</button>
+                <button class="btn-done" data-job-id="{job_id}" data-link="{html.escape(link, quote=True)}" data-greeting="{greeting}">📋 一键投递</button>
+                <button class="btn-ignore" data-job-id="{job_id}">👎 不感兴趣</button>
+            </div>
+            <div class="greeting-text">{greeting}</div>
         </td>
     </tr>""")
 
