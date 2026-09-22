@@ -1,0 +1,137 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="980" height="560" viewBox="0 0 980 560" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','Microsoft YaHei',sans-serif">
+  <rect width="980" height="560" fill="#f5f7fa"/>
+
+  <!-- 顶部提示 -->
+  <rect x="0" y="0" width="980" height="34" fill="#fff3cd"/>
+  <text x="490" y="22" font-size="12" font-weight="700" fill="#8a5a00" text-anchor="middle">示意图 · 数据为虚构，非真实抓取结果</text>
+
+  <!-- 窗口标题栏 -->
+  <rect x="20" y="54" width="940" height="486" rx="10" fill="#ffffff"/>
+  <text x="46" y="88" font-size="17" font-weight="700" fill="#1d1d1f">📋 AI 匹配投递清单</text>
+  <rect x="290" y="72" width="66" height="22" rx="11" fill="#2c3e50"/>
+  <text x="323" y="87" font-size="11" fill="#ffffff" text-anchor="middle">AI应用</text>
+
+  <rect x="700" y="74" width="76" height="24" rx="4" fill="#17a2b8"/>
+  <text x="738" y="90" font-size="11" fill="#ffffff" text-anchor="middle">📋 已投递</text>
+  <rect x="784" y="74" width="76" height="24" rx="4" fill="#ffc107"/>
+  <text x="822" y="90" font-size="11" fill="#333333" text-anchor="middle">📋 已忽略</text>
+  <rect x="868" y="74" width="70" height="24" rx="4" fill="#dc3545"/>
+  <text x="903" y="90" font-size="11" fill="#ffffff" text-anchor="middle">🔄 重置</text>
+
+  <!-- 计数条 -->
+  <rect x="40" y="108" width="900" height="34" rx="8" fill="#ffffff" stroke="#e0e4e8"/>
+  <text x="56" y="130" font-size="12" fill="#1d1d1f">今日已投：</text>
+  <text x="124" y="132" font-size="16" font-weight="700" fill="#28a745">3</text>
+  <text x="142" y="130" font-size="12" fill="#1d1d1f">/ 15 个</text>
+  <text x="210" y="130" font-size="11" fill="#888888">节奏正常，保持分散投递</text>
+  <rect x="850" y="116" width="76" height="20" rx="6" fill="#ffffff" stroke="#d2d2d7"/>
+  <text x="888" y="130" font-size="10" fill="#555555" text-anchor="middle">— 手滑减一</text>
+
+  <!-- 表头 -->
+  <rect x="40" y="154" width="900" height="30" fill="#2c3e50"/>
+  <text x="60" y="174" font-size="11" font-weight="600" fill="#ffffff">匹配分</text>
+  <text x="120" y="174" font-size="11" font-weight="600" fill="#ffffff">HR状态</text>
+  <text x="205" y="174" font-size="11" font-weight="600" fill="#ffffff">公司</text>
+  <text x="330" y="174" font-size="11" font-weight="600" fill="#ffffff">职位</text>
+  <text x="545" y="174" font-size="11" font-weight="600" fill="#ffffff">薪资</text>
+  <text x="625" y="174" font-size="11" font-weight="600" fill="#ffffff">地区</text>
+  <text x="700" y="174" font-size="11" font-weight="600" fill="#ffffff">方向分</text>
+  <text x="770" y="174" font-size="11" font-weight="600" fill="#ffffff">操作</text>
+
+  <!-- 行 1 -->
+  <rect x="40" y="184" width="900" height="42" fill="#f1f5f9"/>
+  <text x="60" y="210" font-size="13" font-weight="700" fill="#2c3e50">83.6</text>
+  <circle cx="128" cy="205" r="4" fill="#28a745"/>
+  <text x="138" y="209" font-size="11" font-weight="600" fill="#28a745">在线</text>
+  <text x="205" y="209" font-size="11.5" fill="#1d1d1f">示例科技</text>
+  <text x="330" y="209" font-size="11.5" fill="#1d1d1f">AI应用开发工程师</text>
+  <text x="545" y="209" font-size="11.5" fill="#1d1d1f">15-25K</text>
+  <text x="625" y="209" font-size="11.5" fill="#1d1d1f">海淀区</text>
+  <text x="712" y="209" font-size="11.5" fill="#1d1d1f">10.0</text>
+  <rect x="766" y="194" width="52" height="22" rx="4" fill="#3498db"/>
+  <text x="792" y="209" font-size="10" fill="#ffffff" text-anchor="middle">📋 仅复制</text>
+  <rect x="822" y="194" width="66" height="22" rx="4" fill="#28a745"/>
+  <text x="855" y="209" font-size="10" fill="#ffffff" text-anchor="middle">📋 一键投递</text>
+  <rect x="892" y="194" width="42" height="22" rx="4" fill="#ff9800"/>
+  <text x="913" y="209" font-size="10" fill="#ffffff" text-anchor="middle">👎</text>
+
+  <!-- 行 2 -->
+  <rect x="40" y="226" width="900" height="42" fill="#ffffff"/>
+  <text x="60" y="252" font-size="13" font-weight="700" fill="#2c3e50">81.2</text>
+  <circle cx="128" cy="247" r="4" fill="#28a745"/>
+  <text x="138" y="251" font-size="11" font-weight="600" fill="#28a745">在线</text>
+  <text x="205" y="251" font-size="11.5" fill="#1d1d1f">示例数据</text>
+  <text x="330" y="251" font-size="11.5" fill="#1d1d1f">AI Agent 开发工程师</text>
+  <text x="545" y="251" font-size="11.5" fill="#1d1d1f">18-30K·14薪</text>
+  <text x="625" y="251" font-size="11.5" fill="#1d1d1f">朝阳区</text>
+  <text x="712" y="251" font-size="11.5" fill="#1d1d1f">10.0</text>
+  <rect x="766" y="236" width="52" height="22" rx="4" fill="#3498db"/>
+  <text x="792" y="251" font-size="10" fill="#ffffff" text-anchor="middle">📋 仅复制</text>
+  <rect x="822" y="236" width="66" height="22" rx="4" fill="#28a745"/>
+  <text x="855" y="251" font-size="10" fill="#ffffff" text-anchor="middle">📋 一键投递</text>
+  <rect x="892" y="236" width="42" height="22" rx="4" fill="#ff9800"/>
+  <text x="913" y="251" font-size="10" fill="#ffffff" text-anchor="middle">👎</text>
+
+  <!-- 行 3：已投递状态 -->
+  <rect x="40" y="268" width="900" height="42" fill="#f0f0f0"/>
+  <text x="60" y="294" font-size="13" font-weight="700" fill="#999999">78.4</text>
+  <text x="128" y="293" font-size="11" fill="#e67e22">8小时前</text>
+  <text x="205" y="293" font-size="11.5" fill="#999999">示例网络</text>
+  <text x="330" y="293" font-size="11.5" fill="#999999">大模型应用开发</text>
+  <text x="545" y="293" font-size="11.5" fill="#999999">16-24K</text>
+  <text x="625" y="293" font-size="11.5" fill="#999999">海淀区</text>
+  <text x="712" y="293" font-size="11.5" fill="#999999">8.0</text>
+  <rect x="766" y="278" width="52" height="22" rx="4" fill="#3498db"/>
+  <text x="792" y="293" font-size="10" fill="#ffffff" text-anchor="middle">📋 仅复制</text>
+  <rect x="822" y="278" width="66" height="22" rx="4" fill="#6c757d"/>
+  <text x="855" y="293" font-size="10" fill="#ffffff" text-anchor="middle">✅ 已投</text>
+
+  <!-- 行 4：匿名公司降权 -->
+  <rect x="40" y="310" width="900" height="42" fill="#ffffff"/>
+  <text x="60" y="336" font-size="13" font-weight="700" fill="#2c3e50">66.8</text>
+  <circle cx="128" cy="331" r="4" fill="#28a745"/>
+  <text x="138" y="335" font-size="11" font-weight="600" fill="#28a745">在线</text>
+  <text x="205" y="334" font-size="11.5" fill="#1d1d1f">某大型互联网公司</text>
+  <text x="205" y="347" font-size="9.5" fill="#dc3545">⚠ 匿名/猎头</text>
+  <text x="330" y="336" font-size="11.5" fill="#1d1d1f">AI应用技术专家</text>
+  <text x="545" y="336" font-size="11.5" fill="#1d1d1f">30-50K</text>
+  <text x="625" y="336" font-size="11.5" fill="#1d1d1f">东城区</text>
+  <text x="712" y="336" font-size="11.5" fill="#1d1d1f">6.0</text>
+  <rect x="766" y="321" width="52" height="22" rx="4" fill="#3498db"/>
+  <text x="792" y="336" font-size="10" fill="#ffffff" text-anchor="middle">📋 仅复制</text>
+  <rect x="822" y="321" width="66" height="22" rx="4" fill="#28a745"/>
+  <text x="855" y="336" font-size="10" fill="#ffffff" text-anchor="middle">📋 一键投递</text>
+  <rect x="892" y="321" width="42" height="22" rx="4" fill="#ff9800"/>
+  <text x="913" y="336" font-size="10" fill="#ffffff" text-anchor="middle">👎</text>
+
+  <!-- 行 5：HR 离线 -->
+  <rect x="40" y="352" width="900" height="42" fill="#ffffff"/>
+  <text x="60" y="378" font-size="13" font-weight="700" fill="#2c3e50">62.1</text>
+  <text x="122" y="377" font-size="11" fill="#dc3545">3天前</text>
+  <text x="205" y="378" font-size="11.5" fill="#1d1d1f">示例软件</text>
+  <text x="330" y="378" font-size="11.5" fill="#1d1d1f">AI应用工程师</text>
+  <text x="545" y="378" font-size="11.5" fill="#1d1d1f">12-20K</text>
+  <text x="625" y="378" font-size="11.5" fill="#1d1d1f">丰台区</text>
+  <text x="712" y="378" font-size="11.5" fill="#1d1d1f">4.0</text>
+  <rect x="766" y="363" width="52" height="22" rx="4" fill="#3498db"/>
+  <text x="792" y="378" font-size="10" fill="#ffffff" text-anchor="middle">📋 仅复制</text>
+  <rect x="822" y="363" width="66" height="22" rx="4" fill="#28a745"/>
+  <text x="855" y="378" font-size="10" fill="#ffffff" text-anchor="middle">📋 一键投递</text>
+  <rect x="892" y="363" width="42" height="22" rx="4" fill="#ff9800"/>
+  <text x="913" y="378" font-size="10" fill="#ffffff" text-anchor="middle">👎</text>
+
+  <!-- 底部说明 -->
+  <line x1="40" y1="404" x2="940" y2="404" stroke="#e0e4e8"/>
+  <text x="40" y="428" font-size="11.5" font-weight="700" fill="#1d1d1f">面板上三个信号，直接决定值不值得投：</text>
+
+  <circle cx="52" cy="449" r="4" fill="#28a745"/>
+  <text x="64" y="453" font-size="11" fill="#555555"><tspan font-weight="600">HR 在线</tspan> — 平台机制：HR 离线时招呼语不会推送，只能躺后台等他上线</text>
+
+  <circle cx="52" cy="470" r="4" fill="#dc3545"/>
+  <text x="64" y="474" font-size="11" fill="#555555"><tspan font-weight="600">⚠ 匿名/猎头</tspan> — 公司名被平台匿名化，多为代招，投了不知去向，排序自动降权</text>
+
+  <circle cx="52" cy="491" r="4" fill="#3498db"/>
+  <text x="64" y="495" font-size="11" fill="#555555"><tspan font-weight="600">方向分</tspan> — 命中岗位加分词 +2/个，命中排除词 −4/个，正数越多越对口</text>
+
+  <text x="40" y="524" font-size="10.5" fill="#a0a0a5">发送动作始终由使用者手动完成；「一键投递」只做两件事：复制话术、打开岗位页。</text>
+</svg>

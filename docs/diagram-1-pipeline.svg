@@ -1,0 +1,76 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="470" viewBox="0 0 900 470" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','Microsoft YaHei',sans-serif">
+  <rect width="900" height="470" fill="#ffffff"/>
+
+  <!-- 标题 -->
+  <text x="30" y="38" font-size="19" font-weight="700" fill="#1d1d1f">数据流水线</text>
+  <text x="30" y="60" font-size="12" fill="#86868b">从采集到投递，每一步做什么、谁来触发</text>
+
+  <!-- 流程节点 -->
+  <!-- 步骤 1 -->
+  <rect x="30" y="90" width="190" height="112" rx="10" fill="#f5f5f7" stroke="#d2d2d7"/>
+  <text x="125" y="117" font-size="13" font-weight="700" fill="#1d1d1f" text-anchor="middle">① 采集岗位</text>
+  <text x="125" y="139" font-size="11" fill="#6e6e73" text-anchor="middle">CDP 控制专用 Chrome</text>
+  <text x="125" y="157" font-size="11" fill="#6e6e73" text-anchor="middle">抓列表 + 详情 JD</text>
+  <rect x="52" y="170" width="146" height="20" rx="10" fill="#e8f0fe"/>
+  <text x="125" y="184" font-size="10" fill="#1a73e8" text-anchor="middle">登录由你手动完成</text>
+
+  <!-- 箭头 -->
+  <path d="M224 146 L252 146" stroke="#c7c7cc" stroke-width="2" marker-end="url(#ar)"/>
+
+  <!-- 步骤 2 -->
+  <rect x="258" y="90" width="190" height="112" rx="10" fill="#f5f5f7" stroke="#d2d2d7"/>
+  <text x="353" y="117" font-size="13" font-weight="700" fill="#1d1d1f" text-anchor="middle">② 合并 JD</text>
+  <text x="353" y="139" font-size="11" fill="#6e6e73" text-anchor="middle">按 job_id 关联详情</text>
+  <text x="353" y="157" font-size="11" fill="#6e6e73" text-anchor="middle">去重 + 保留最新</text>
+  <rect x="280" y="170" width="146" height="20" rx="10" fill="#fff4e5"/>
+  <text x="353" y="184" font-size="10" fill="#b26a00" text-anchor="middle">没有 JD 就没有语义分</text>
+
+  <path d="M452 146 L480 146" stroke="#c7c7cc" stroke-width="2" marker-end="url(#ar)"/>
+
+  <!-- 步骤 3 -->
+  <rect x="486" y="90" width="190" height="112" rx="10" fill="#f5f5f7" stroke="#d2d2d7"/>
+  <text x="581" y="117" font-size="13" font-weight="700" fill="#1d1d1f" text-anchor="middle">③ 打分排序</text>
+  <text x="581" y="139" font-size="11" fill="#6e6e73" text-anchor="middle">8 个维度加权</text>
+  <text x="581" y="157" font-size="11" fill="#6e6e73" text-anchor="middle">按赛道分池</text>
+  <rect x="508" y="170" width="146" height="20" rx="10" fill="#e7f7ec"/>
+  <text x="581" y="184" font-size="10" fill="#1e7b3c" text-anchor="middle">本地计算，不联网</text>
+
+  <path d="M680 146 L708 146" stroke="#c7c7cc" stroke-width="2" marker-end="url(#ar)"/>
+
+  <!-- 步骤 4 -->
+  <rect x="714" y="90" width="156" height="112" rx="10" fill="#f5f5f7" stroke="#d2d2d7"/>
+  <text x="792" y="117" font-size="13" font-weight="700" fill="#1d1d1f" text-anchor="middle">④ 生成话术</text>
+  <text x="792" y="139" font-size="11" fill="#6e6e73" text-anchor="middle">大模型 API</text>
+  <text x="792" y="157" font-size="11" fill="#6e6e73" text-anchor="middle">按 JD 定制</text>
+  <rect x="729" y="170" width="126" height="20" rx="10" fill="#f3e8fd"/>
+  <text x="792" y="184" font-size="10" fill="#7b1fa2" text-anchor="middle">约 80 次调用 / 批</text>
+
+  <!-- 输出物 -->
+  <text x="30" y="248" font-size="13" font-weight="700" fill="#1d1d1f">产出</text>
+  <rect x="30" y="262" width="270" height="72" rx="8" fill="#ffffff" stroke="#e0e4e8"/>
+  <text x="46" y="285" font-size="12" font-weight="600" fill="#2c3e50">apply_helper_ai.html</text>
+  <text x="46" y="304" font-size="10.5" fill="#86868b">AI应用赛道投递面板</text>
+  <text x="46" y="321" font-size="10.5" fill="#86868b">一键复制话术 + 打开岗位页</text>
+
+  <rect x="315" y="262" width="270" height="72" rx="8" fill="#ffffff" stroke="#e0e4e8"/>
+  <text x="331" y="285" font-size="12" font-weight="600" fill="#2c3e50">apply_helper_qa.html</text>
+  <text x="331" y="304" font-size="10.5" fill="#86868b">自动化测试赛道投递面板</text>
+  <text x="331" y="321" font-size="10.5" fill="#86868b">两赛道记录互相隔离</text>
+
+  <rect x="600" y="262" width="270" height="72" rx="8" fill="#ffffff" stroke="#e0e4e8"/>
+  <text x="616" y="285" font-size="12" font-weight="600" fill="#2c3e50">apply_ready_list_*.csv</text>
+  <text x="616" y="304" font-size="10.5" fill="#86868b">含打分明细，可自行分析</text>
+  <text x="616" y="321" font-size="10.5" fill="#86868b">列：HR状态 / 公司标签 / 明细</text>
+
+  <!-- 关键设计说明 -->
+  <rect x="30" y="356" width="840" height="86" rx="10" fill="#fff8f0" stroke="#f0c98a"/>
+  <text x="48" y="381" font-size="12.5" font-weight="700" fill="#8a5a00">关键设计：发送动作不在流水线内</text>
+  <text x="48" y="403" font-size="11.5" fill="#6e5433">脚本产出到「话术已就绪」为止。打开岗位页、粘贴、点发送，全部由使用者手动完成。</text>
+  <text x="48" y="423" font-size="11.5" fill="#6e5433">原因见 README「为什么不做全自动投递」——平台风控对高频机械话术的判定阈值很低。</text>
+
+  <defs>
+    <marker id="ar" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+      <path d="M0,0 L6,3 L0,6 z" fill="#c7c7cc"/>
+    </marker>
+  </defs>
+</svg>

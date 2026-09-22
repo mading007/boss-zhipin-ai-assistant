@@ -1,0 +1,52 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="430" viewBox="0 0 900 430" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','Microsoft YaHei',sans-serif">
+  <rect width="900" height="430" fill="#ffffff"/>
+
+  <text x="30" y="38" font-size="19" font-weight="700" fill="#1d1d1f">中文为什么不能用空格分词</text>
+  <text x="30" y="60" font-size="12" fill="#86868b">同一组「个人信息画像 vs 岗位 JD」，两种切分方式的余弦相似度实测对比</text>
+
+  <!-- 对比卡片 A -->
+  <rect x="30" y="84" width="405" height="176" rx="10" fill="#fff5f5" stroke="#f0b8b8"/>
+  <text x="52" y="112" font-size="13" font-weight="700" fill="#c0392b">✕ 空格分词（默认做法）</text>
+  <text x="52" y="134" font-size="11" fill="#6e6e73">中文没有空格，整句被当成 1 个 token</text>
+
+  <rect x="52" y="148" width="361" height="52" rx="6" fill="#ffffff" stroke="#e8c8c8"/>
+  <text x="64" y="169" font-size="10.5" fill="#555" font-family="monospace">画像: "我是马丁，2026届电子信息工程本科毕业生…"</text>
+  <text x="64" y="188" font-size="10.5" fill="#555" font-family="monospace">JD  : "负责企业级AI应用开发，参与知识库…"</text>
+
+  <text x="52" y="222" font-size="11" fill="#6e6e73">两个字串没有完全相同的整句 → 词表无交集</text>
+  <text x="52" y="248" font-size="20" font-weight="700" fill="#c0392b">相似度 = 0.0000</text>
+  <text x="200" y="247" font-size="10.5" fill="#c0392b">完全失效</text>
+
+  <!-- 对比卡片 B -->
+  <rect x="465" y="84" width="405" height="176" rx="10" fill="#f0fbf4" stroke="#a8dfc0"/>
+  <text x="487" y="112" font-size="13" font-weight="700" fill="#1e7b3c">✓ 英文按词 + 中文按 2/3/4 字 n-gram</text>
+  <text x="487" y="134" font-size="11" fill="#6e6e73">把中文切成有意义的片段再比对</text>
+
+  <rect x="487" y="148" width="361" height="52" rx="6" fill="#ffffff" stroke="#c8e8d8"/>
+  <text x="499" y="169" font-size="10.5" fill="#555" font-family="monospace">我+是 / 马丁 / 电子 / 子信 / 信息 / 工程 …</text>
+  <text x="499" y="188" font-size="10.5" fill="#555" font-family="monospace">企业 / 应用 / 开发 / 知识 / 识库 / 向量 …</text>
+
+  <text x="487" y="222" font-size="11" fill="#6e6e73">共享字符片段被捕捉到 → 词表产生交集</text>
+  <text x="487" y="248" font-size="20" font-weight="700" fill="#1e7b3c">相似度 = 0.0338</text>
+  <text x="617" y="248" font-size="11" fill="#1e7b3c">从 0 变成可用信号</text>
+
+  <!-- 实测表格 -->
+  <text x="30" y="298" font-size="13" font-weight="700" fill="#1d1d1f">实测数据（两组不同主题的 JD）</text>
+  <rect x="30" y="310" width="840" height="0.5" fill="#e0e4e8"/>
+  <text x="30" y="332" font-size="11.5" fill="#86868b">测试样本</text>
+  <text x="430" y="332" font-size="11.5" fill="#86868b" text-anchor="middle">空格分词</text>
+  <text x="640" y="332" font-size="11.5" fill="#86868b" text-anchor="middle">中文 n-gram</text>
+  <text x="820" y="332" font-size="11.5" fill="#86868b" text-anchor="end">结论</text>
+
+  <text x="30" y="358" font-size="11.5" fill="#1d1d1f">JD₁ 含 LangChain / RAG / 向量库等原词</text>
+  <text x="430" y="358" font-size="11.5" fill="#c0392b" text-anchor="middle">0.0000</text>
+  <text x="640" y="358" font-size="11.5" fill="#1e7b3c" text-anchor="middle">0.0338</text>
+  <text x="820" y="358" font-size="11.5" fill="#1d1d1f" text-anchor="end">0 → 可用</text>
+
+  <text x="30" y="382" font-size="11.5" fill="#1d1d1f">JD₂ 同主题但措辞完全不同</text>
+  <text x="430" y="382" font-size="11.5" fill="#c0392b" text-anchor="middle">0.0000</text>
+  <text x="640" y="382" font-size="11.5" fill="#1e7b3c" text-anchor="middle">0.0345</text>
+  <text x="820" y="382" font-size="11.5" fill="#1d1d1f" text-anchor="end">0 → 可用</text>
+
+  <text x="30" y="412" font-size="10.5" fill="#a0a0a5">余弦值绝对值偏低是 TF-IDF 的正常表现，脚本内做了归一化放大后参与 35 分权重的语义项。</text>
+</svg>
