@@ -388,6 +388,62 @@ def semantic_score(profile, jd_text, profile_key):
         return None
 
 
+# ---------- 公司可信度 / HR 活跃度：两个影响「投了有没有用」的因素 ----------
+
+# BOSS 上把公司名显示成「某大型互联网公司」的，基本都是猎头或外包代招，
+# 点进去看不到真公司、投了也不知道去向。这类降权。
+# 注意：只匹配「某 + 规模/性质 + 行业/公司」这种匿名化写法，
+# 不能只看到「某」就判——真实公司名里也可能带这个字。
+_ANON_COMPANY_PATTERN = re.compile(
+    r'^某|'
+    r'某(大型|中型|小型|知名|上市|头部|独角兽)?[^，,]{0,10}(公司|集团|企业|银行|机构|平台)|'
+    # 没有「某」但同样匿名化的写法
+    r'^(知名|著名|大型|头部|一线|上市|独角兽)[^，,]{0,8}公司$|'
+    r'^(知名公司|保密公司|匿名公司)$'
+)
+_HEADHUNTER_PATTERN = re.compile(r'人力资源|人才服务|猎头|劳务|外包|外派|派遣|代招|招聘服务')
+
+
+def company_credibility(name):
+    """返回 (加减分, 标签)。匿名或猎头外包岗降权。"""
+    s = str(name or '').strip()
+    if not s:
+        return 0.0, ''
+    if _ANON_COMPANY_PATTERN.search(s):
+        return -8.0, '匿名/猎头'
+    if _HEADHUNTER_PATTERN.search(s):
+        return -5.0, '人力/外包'
+    return 0.0, ''
+
+
+# HR 活跃状态 -> (加减分, 展示标签)
+# BOSS 机制：HR 不在线时招呼语不会推送到他手机，会躺在后台等他上线。
+# 所以「在线」的岗位才值得优先投。
+def hr_activity(status):
+    s = str(status or '').strip()
+    if not s:
+        return 0.0, ''
+
+    # 先排掉带时间前缀的（「8小时前在线」「3天前在线」），否则会被当成"在线"
+    m = re.search(r'(\d+)\s*小时前', s)
+    if m:
+        h = int(m.group(1))
+        return (2.0, f'{h}小时前') if h <= 12 else (-1.0, f'{h}小时前')
+    m = re.search(r'(\d+)\s*天前', s)
+    if m:
+        return -4.0, f'{m.group(1)}天前'
+    m = re.search(r'(\d+)\s*分钟前', s)
+    if m:
+        return 5.0, f'{m.group(1)}分钟前'
+
+    # 无时间前缀的即时状态
+    if '刚刚' in s:
+        return 5.0, '刚刚活跃'
+    if '当前在线' in s or s == '在线' or '在线' in s:
+        return 5.0, '在线'
+    return 0.0, s[:8]
+
+
 def score_row(row, profile):
     score, details = 0.0, {}
 
@@ -466,7 +522,24 @@ def score_row(row, profile):
     score += adj
     details['方向'] = round(adj, 1)
 
-    return round(max(score, 0.0), 2), '｜'.join(f"{k}{v}" for k, v in details.items())
+    # --- 公司可信度：匿名/猎头/外包岗降权 ---
+    cred_adj, cred_tag = company_credibility(row.get('boss_name', ''))
+    score += cred_adj
+    details['公司'] = cred_adj
+
+    # --- HR 活跃度：在线优先（BOSS 上 HR 离线时招呼语不会推送）---
+    act_adj, act_tag = hr_activity(row.get('boss_active_status', ''))
+    score += act_adj
+    details['活跃'] = act_adj
+
+    # 注意：这些标签必须由调用方写回 DataFrame 列。
+    # 这里只写 row['xxx'] 是改 Series 副本，不会创建列（历史上已踩坑三次）。
+    return {
+        'match_score': round(max(score, 0.0), 2),
+        'detail_scores': '｜'.join(f"{k}{v}" for k, v in details.items()),
+        'company_tag': cred_tag,
+        'active_tag': act_tag,
+    }
 
 
 # ============================================================
@@ -839,7 +912,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 <table id="jobTable">
 <thead>
 <tr>
-    <th>匹配分</th><th>公司</th><th>职位</th><th>薪资</th><th>地区</th><th>方向分</th><th>操作</th>
+    <th>匹配分</th><th>HR状态</th><th>公司</th><th>职位</th><th>薪资</th><th>地区</th><th>方向分</th><th>操作</th>
 </tr>
 </thead>
 <tbody>
@@ -1032,9 +1105,24 @@ def build_html(df, profile):
         m = re.search(r'方向(-?\d+\.?\d*)', str(bonus))
         bonus_txt = m.group(1) if m else ''
 
+        # HR 活跃状态 + 公司可信度标签
+        act_tag = html.escape(str(r.get('active_tag', '') or ''))
+        comp_tag = html.escape(str(r.get('company_tag', '') or ''))
+        if '在线' in act_tag:
+            act_html = f'<span style="color:#28a745;font-weight:600">● {act_tag}</span>'
+        elif act_tag.endswith('天前'):
+            act_html = f'<span style="color:#dc3545">{act_tag}</span>'
+        elif act_tag.endswith('小时前'):
+            act_html = f'<span style="color:#e67e22">{act_tag}</span>'
+        else:
+            act_html = f'<span style="color:#bbb">未知</span>'
+        if comp_tag:
+            act_html += f'<br><span style="color:#dc3545;font-size:11px">⚠ {comp_tag}</span>'
+
         rows.append(f"""
     <tr data-job-id="{job_id}" data-company="{boss}" data-title="{title}" data-salary="{salary}" data-district="{district}" data-link="{html.escape(link, quote=True)}">
         <td class="match-score">{score:.1f}</td>
+        <td>{act_html}</td>
         <td>{boss}</td>
         <td>{title}</td>
         <td>{salary}</td>
@@ -1114,9 +1202,9 @@ def main():
         # 过滤硕士硬门槛（学历分直接归零的，没意义）
         sub = sub[~sub['tags'].astype(str).str.contains('硕士', na=False)]
         sub['district'] = sub['location'].astype(str).str.split('·').str[1].fillna('')
-        scored = sub.apply(lambda r: pd.Series(score_row(r, profile), index=['match_score', 'detail_scores']), axis=1)
-        sub['match_score'] = scored['match_score']
-        sub['detail_scores'] = scored['detail_scores']
+        scored = sub.apply(lambda r: pd.Series(score_row(r, profile)), axis=1)
+        for col in ['match_score', 'detail_scores', 'company_tag', 'active_tag']:
+            sub[col] = scored[col]
         sub = sub.sort_values('match_score', ascending=False)
 
         print(f"   生成招呼语中（{min(len(sub), GREETING_LIMIT)} 条）…")
@@ -1134,8 +1222,9 @@ def main():
             print(f"   （{before - len(sub)} 个岗位超出话术生成上限，未进入面板）")
 
         # 输出 CSV
-        cols = ['boss_name', 'title', 'salary', 'district', 'company_scale',
-                'company_industry', 'job_link', 'match_score', 'detail_scores', 'greeting']
+        cols = ['boss_name', 'active_tag', 'company_tag', 'title', 'salary', 'district',
+                'company_scale', 'company_industry', 'job_link', 'match_score',
+                'detail_scores', 'greeting']
         cols = [c for c in cols if c in sub.columns]
         csv_name = f"apply_ready_list_{profile['track']}.csv"
         csv_path = os.path.join(SCRIPT_DIR, csv_name)
