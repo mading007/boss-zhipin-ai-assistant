@@ -73,19 +73,20 @@ PROFILE_AI = {
 我是马丁，2026届电子信息工程本科毕业生，可立即到岗，期望城市北京。
 
 核心项目：
-1. RAG论文问答系统（8月，已开源）：基于 LangChain + Chroma + BGE Embedding 独立开发，
-   支持 PDF 上传、文本切分、向量化存储、语义检索与答案引用溯源，完整走通 RAG 全链路；
-2. 智能求职助手（9月）：Chrome DevTools Protocol 采集岗位数据，TF-IDF + 余弦相似度做匹配排序，
-   调用大模型 API 生成差异化话术，并用 HTML 面板承载，形成完整 AI 应用闭环；
-3. AI图像风格统一生成（6月）：设计结构化 Prompt 模板（光源/色调/景别/场景多维度控制），
-   将风格统一度从 60% 提升至 90% 以上，沉淀 30 项一致性检查 SOP；
-4. 金融终端自动化导出系统（6月）：图像识别 + 模拟操作，实现无人值守定时导出与邮件投递。
+1. 知识库问答（8月，已开源）：基于 LangChain + Chroma + BGE Embedding 独立开发，
+   把 PDF 等文档解析、切分、向量化后做语义检索，回答带原文出处，能直接接进业务系统；
+2. 智能求职助手（9月）：Chrome DevTools Protocol 采集结构化数据，TF-IDF + 余弦相似度做匹配排序，
+   调用大模型 API 生成定制内容，并用网页面板承载整个流程，形成完整 AI 应用闭环；
+3. AI图像批量生成（6月）：用结构化 Prompt 模板控制光源/色调/景别/场景多个维度，
+   把出图一致性从 60% 提升至 90% 以上，并沉淀成可复用的检查清单；
+4. 金融终端自动化导出系统（6月）：图像识别定位 + 模拟键鼠操作，实现无人值守定时导出与邮件投递，
+   打包成 exe 供非技术同事使用，上线后每天省下 30 分钟人工操作。
 
 技术栈：Python、LangChain、Chroma、BGE Embedding、Prompt Engineering、
 大模型 API 调用（DeepSeek/ChatGLM）、Pandas、MySQL、自动化脚本。
 """,
     # 招呼语默认讲哪个项目（按 JD 关键词再切换）
-    'main_project': 'RAG论文问答系统',
+    'main_project': '智能求职助手',
     'main_project_desc': '基于 LangChain + Chroma 搭建的 RAG 系统，走通了文档加载、文本切分、'
                          '向量化存储、语义检索到答案溯源的全链路，能独立把大模型能力接进业务系统',
     'fallback_project': 'AI图像风格统一生成',
@@ -125,7 +126,8 @@ PROFILE_QA = {
    最后邮件自动发送；打包成 exe，非技术同事双击即用，上线后每天节省 30 分钟人工操作；
 2. 智能求职助手（9月）：基于 Chrome DevTools Protocol 控制浏览器，实现稳定的数据采集
    与字段结构化，并用 TF-IDF + 余弦相似度做匹配排序，HTML 面板承载结果；
-3. RAG论文问答系统（8月，已开源）：LangChain + Chroma，完整走通检索增强生成链路。
+3. 知识库问答（8月，已开源）：LangChain + Chroma，搭过检索增强问答的完整链路，
+   并对切分粒度与召回效果逐环节做过对比验证。
 
 技术栈：Python、pytest、Selenium、requests、接口测试、SQL、
 自动化脚本与定时任务、Linux/Git 基础。
@@ -553,7 +555,8 @@ def _fallback_greeting(row, profile, opening=None):
     proj, _ = _pick_project(row, profile)
 
     if proj:
-        body = (f"我在{proj['name']}上做过完整落地——{proj['desc']}。"
+        tools_txt = '、'.join(proj.get('tools', []))
+        body = (f"我用 {tools_txt} {proj['desc']}。"
                 f"这个岗位我很感兴趣，期待有机会进一步沟通。")
     else:
         body = "我做过与这个岗位方向相关的完整项目，能独立把事情落地。期待有机会进一步沟通。"
@@ -592,21 +595,50 @@ def jd_wants_oss(jd_text):
 
 
 MAX_GREETING_LEN = 110
+_CLOSING = '期待有机会进一步沟通。'
+
+
+def _trim_to_sentence(text, budget):
+    """把 text 截到不超过 budget 字，且尽量停在一个完整句末。
+
+    注意：补句号时是多出一个字符的，所以补之前要先腾出位置，
+    否则会稳定超出 budget 一个字（曾实测所有超长都刚好是 111）。
+    """
+    if len(text) <= budget:
+        return text
+
+    cut = text[:budget]
+    for ch in ['。', '！', '？', '；']:
+        idx = cut.rfind(ch)
+        if idx >= budget * 0.5:
+            return cut[:idx + 1]          # 已经是句末，直接用
+
+    # 没有可用句末：去掉尾部标点后补一个句号，注意别越界
+    core = cut[:budget - 1].rstrip('，,、；; ')
+    return core + '。'
 
 
 def _cap_length(text, limit=MAX_GREETING_LEN):
-    """话术超长时，回退到 limit 内最后一个句末，避免硬切半句话。
-    实测提示词里写多遍字数限制，模型照样写到 115 字，所以代码兜底。"""
+    """话术超长时的兜底。
+
+    模型无视字数限制（实测仍会写到 115 字），所以代码兜底。两个要求：
+      1. 不出现「…能直接。」这种半句话 —— 尽量停在句末
+      2. 保住收尾句「期待有机会进一步沟通。」—— 但绝不能因此超过 limit
+
+    做法：先切掉已有的收尾句，按「limit − 收尾句长度」给正文留预算，
+    再把收尾句接回去；正文里本来就没有收尾句时，不硬加（避免话术变僵）。
+    """
     text = str(text or '').strip()
     if len(text) <= limit:
         return text
-    head = text[:limit]
-    # 优先在句末断开
-    for ch in ['。', '！', '？', '；']:
-        idx = head.rfind(ch)
-        if idx >= limit * 0.5:
-            return head[:idx + 1]
-    return head.rstrip('，,、 ') + '。'
+
+    has_closing = _CLOSING in text
+    if has_closing:
+        body = text[:text.rfind(_CLOSING)]
+        body = _trim_to_sentence(body, limit - len(_CLOSING))
+        return body + _CLOSING
+
+    return _trim_to_sentence(text, limit)
 
 
 def _finalize(text, row, opening_unused=None):
@@ -647,69 +679,88 @@ _opening_lock = None
 # ---------- 主打项目：同样由 Python 决定，不交给模型 ----------
 # 每个项目配一组「JD 命中词」。命中最多者优先；都不命中时按顺序轮换，
 # 避免 40 条话术全都讲同一个项目（实测同一批 10 条全讲金融终端，很像群发）。
+# 每个项目配三样东西：
+#   name  项目内部名（也用于降级模板）
+#   tools 可被念出来的技术名 —— 招呼语要**先亮这些词**，HR 扫一眼就能命中关键词
+#   desc  做出来能干嘛（业务价值），不要写成「我怎么实现的」
+#   keys  命中词，用于判断这个岗位该讲哪个项目
+#
+# 命名注意：不要把项目叫成「XX论文系统」——「论文」两字会让人一眼判定是课程作业。
 _PROJECTS = {
     'ai': [
         {
-            'name': 'RAG论文问答系统',
-            'desc': '基于 LangChain + Chroma + BGE Embedding 搭的 RAG 系统，'
-                    '走通文档加载、文本切分、向量化存储、语义检索到答案溯源的全链路',
-            'keys': ['rag', 'langchain', 'chroma', '向量', '知识库', '语义检索',
-                     'embedding', '召回', '检索增强'],
-        },
-        {
             'name': '智能求职助手',
-            'desc': 'Chrome DevTools Protocol 采集岗位数据，TF-IDF 匹配排序，'
-                    '调大模型 API 生成差异化内容，用 HTML 面板承载整个流程，形成完整 AI 应用闭环',
+            'tools': ['Chrome DevTools Protocol', 'TF-IDF', '大模型 API'],
+            'desc': '做过一个从数据采集到内容生成的全链路 AI 应用：自动采集结构化数据、'
+                    '用 TF-IDF 与余弦相似度做匹配排序、再调大模型 API 生成定制内容，'
+                    '并用网页面板把整条流程承接起来',
             'keys': ['agent', '智能体', 'mcp', '工具调用', 'workflow', '编排',
-                     'function calling', '多轮'],
+                     'function calling', '全栈', '端到端', '闭环'],
         },
         {
-            'name': 'AI图像风格统一生成',
-            'desc': '设计结构化 Prompt 模板做多维度控制（光源、色调、景别、场景），'
-                    '把生成结果的一致性和可控性提升到可用水平，并沉淀了检查 SOP',
+            'name': '知识库问答',
+            'tools': ['LangChain', 'Chroma', 'BGE Embedding'],
+            'desc': '用这套做过一套面向企业内部文档的问答服务：把 PDF 等非结构化文档'
+                    '解析、切分、向量化后做语义检索，回答带原文出处，能直接接进业务系统',
+            'keys': ['rag', 'langchain', 'chroma', '向量', '知识库', '语义检索',
+                     'embedding', '召回', '检索增强', '问答'],
+        },
+        {
+            'name': 'AI图像批量生成',
+            'tools': ['Prompt Engineering', '结构化模板'],
+            'desc': '用结构化 Prompt 模板控制光源、色调、景别、场景等维度做批量生成，'
+                    '把出图一致性从六成提到九成以上，并沉淀成可复用的检查清单',
             'keys': ['prompt', '提示词', 'aigc', '图像', '生图', '风格', '多模态', '文生图'],
         },
     ],
     'qa': [
         {
             'name': '金融终端自动化导出系统',
-            'desc': '用「图像识别定位元素 + 模拟键鼠」实现无人值守的定时导出，'
-                    '主动处理了弹窗等异常分支，打包成 exe 让非技术同事直接用，'
-                    '上线后每天省下 30 分钟人工操作、数据零遗漏',
+            'tools': ['Python', '图像识别定位', '模拟键鼠操作'],
+            'desc': '做过一套无人值守的桌面自动化程序：自动完成导出、加时间戳归档、'
+                    '按日期合并汇总并邮件发送，主动处理了弹窗等异常分支，'
+                    '打包成 exe 让非技术同事直接双击使用，上线后每天省下 30 分钟人工操作',
             'keys': ['自动化脚本', '定时任务', '无人值守', 'windows', '桌面',
                      'exe', '批量处理', '运维'],
         },
         {
             'name': '智能求职助手',
-            'desc': '基于 Chrome DevTools Protocol 控制浏览器，定位页面元素、'
-                    '稳定采集结构化数据，并用 TF-IDF 与余弦相似度做匹配排序',
+            'tools': ['Chrome DevTools Protocol', '元素定位', '结构化采集'],
+            'desc': '用 CDP 控制浏览器稳定采集数据结构化落库，并针对元素失效、页面加载'
+                    '超时等情况做了重试与降级处理，保证长时间运行不中断',
             'keys': ['selenium', 'playwright', 'appium', 'ui自动化', '元素定位',
                      '爬虫', '抓取', 'cdp', 'chromedriver', 'web自动化'],
         },
         {
             'name': '接口联调与数据处理',
-            'desc': '日常用 Python 做接口调用与数据处理，熟悉 HTTP 协议、'
-                    '请求与返回结构的校验，独立写过带异常分支处理的完整自动化脚本',
-            # 注意：这里只放「接口测试」这个专有说法。
-            # 早期误放了 'http'、'requests' 等泛词，导致几乎所有测试岗都被判成这一项（实测占 50%）。
+            'tools': ['Python 接口调用', 'HTTP 协议', 'JSON 结构校验'],
+            'desc': '日常用 Python 做接口联调与数据清洗，能根据返回结构写字段校验与'
+                    '异常分支处理，把接口数据整理成可直接分析的表格',
+            # 只放「接口测试」这类专有说法。
+            # 早期误放了 'http'、'requests' 等泛词，导致 50% 测试岗都被判成这一项。
             'keys': ['接口测试', '接口自动化', 'api测试', 'api自动化',
                      'postman', 'jmeter', '接口联调'],
         },
         {
-            'name': 'RAG论文问答系统',
-            'desc': 'LangChain + Chroma 搭建的检索增强问答系统，'
-                    '对链路的每个环节都做过验证与对比，能把 AI 能力落进产品',
-            'keys': ['大模型', 'llm', 'ai测试', '模型评测', 'rag',
-                     'ai应用', '智能体', 'agent', 'prompt', '评测'],
+            'name': '知识库问答',
+            'tools': ['LangChain', 'Chroma', 'RAG 链路验证'],
+            'desc': '搭过检索增强问答的完整链路，并对切分粒度、召回效果逐环节做过对比验证，'
+                    '能为 AI 类产品的效果评估提供可复用的方法',
+            # 这里只保留 AI 测试专用词。原先放了 '大模型''ai应用' 等泛词，
+            # 几乎每个 AI 岗都会命中，把本该分给其它项目的岗位全抢走了。
+            'keys': ['ai测试', '模型评测', '大模型测试', 'rag', 'llm'],
         },
     ],
 }
 _project_cursor = {}
 
-# 关键词全都没命中时，默认讲哪个项目（QA 赛道）。
-# 这个项目在测试岗上是硬通货（无人值守 + 异常处理 + 打包交付），
-# 想换成别的就把名字改成 _PROJECTS['qa'] 里任意一项的 'name'。
-DEFAULT_QA_PROJECT = '金融终端自动化导出系统'
+# 关键词全都没命中时，默认讲哪个项目。
+# QA 用金融终端（测试岗硬通货：无人值守 + 异常处理 + 打包交付）；
+# AI 用智能求职助手（技术链路最全：采集 + 匹配算法 + 大模型 API + 前端面板）。
+DEFAULT_PROJECT = {
+    'ai': '智能求职助手',
+    'qa': '金融终端自动化导出系统',
+}
 
 
 def _pick_project(row, profile):
@@ -734,12 +785,66 @@ def _pick_project(row, profile):
         _project_cursor[profile['track']] = cur + 1
         return chosen[2], best_hits
 
-    # 无命中：用默认项目（找得到就用，找不到退回轮换）
-    default_name = DEFAULT_QA_PROJECT if profile['track'] == 'qa' else specs[0]['name']
+    # 无命中：用默认项目（找得到就用，找不到退回第一个）
+    default_name = DEFAULT_PROJECT.get(profile['track'], specs[0]['name'])
     for p in specs:
         if p['name'] == default_name:
             return p, 0
     return specs[0], 0
+
+
+# ============================================================
+# JD 技术词提取：把岗位真正在意的技术名挑出来，提示词里点名让 AI 呼应
+# ============================================================
+# 词表按「具体 → 泛化」排列。越靠前的词越能体现岗位的技术栈，
+# 提取时优先取它们，避免把「沟通能力」「团队协作」这类放进招呼语。
+_TECH_VOCAB = [
+    # 语言 / 数据
+    'Python', 'Java', 'Go', 'Golang', 'C++', 'SQL', 'MySQL', 'PostgreSQL',
+    'Redis', 'MongoDB', 'Elasticsearch', 'Pandas', 'NumPy',
+    # 大模型 / RAG
+    'LangChain', 'LlamaIndex', 'Chroma', 'Milvus', 'Faiss', '向量数据库',
+    'RAG', 'Embedding', 'Prompt', '提示词', '微调', 'Fine-tuning',
+    '大模型', 'LLM', 'GPT', 'ChatGLM', 'Qwen', 'DeepSeek',
+    # Agent / 工作流
+    'Agent', '智能体', 'MCP', 'Function Calling', '工作流', 'Workflow',
+    'Dify', 'Coze', 'LangGraph', 'AutoGen',
+    # 工程 / 部署
+    'Docker', 'Kubernetes', 'K8s', 'Linux', 'Git', 'CI/CD', 'Jenkins',
+    'FastAPI', 'Flask', 'Django', 'Spring', 'Vue', 'React',
+    # 测试向
+    'pytest', 'unittest', 'Selenium', 'Playwright', 'Appium', 'Postman',
+    'JMeter', '接口测试', '自动化测试', '测试用例', '性能测试',
+    'UI自动化', '接口自动化', '测试开发', '缺陷',
+    # 数据 / 分析
+    'Excel', 'Tableau', 'Power BI', '数据分析', '数据清洗', '爬虫',
+    '数据采集', '数据可视化',
+]
+
+_TECH_LOWER = [(t, t.lower()) for t in _TECH_VOCAB]
+
+
+def extract_jd_tech(jd_text, limit=6):
+    """从 JD 里挑出最该被呼应的技术词。
+
+    返回按出现顺序排列的关键词列表（保持词表的优先级顺序，越具体的越靠前）。
+    注意：匹配时要求词边界或原样出现，避免 'go' 命中 'google' 这类误判。
+    """
+    jd = str(jd_text or '')
+    if not jd:
+        return []
+    low = jd.lower()
+    hits = []
+    for orig, lw in _TECH_LOWER:
+        if len(lw) <= 3 and lw.isascii():
+            # 短英文词要求非字母边界，防止 go/git 之类误命中
+            if re.search(r'(?<![a-zA-Z])' + re.escape(lw) + r'(?![a-zA-Z])', low):
+                hits.append(orig)
+        elif lw in low:
+            hits.append(orig)
+        if len(hits) >= limit:
+            break
+    return hits
 
 
 def _pick_opening(row):
@@ -776,17 +881,34 @@ def generate_greeting(row, profile):
     jd_excerpt = jd[:1500]
     company = row.get('boss_name', '') or ''
 
-    # 主打项目由 Python 选定（按 JD 关键词优先，无命中则轮换），模型只负责把它讲自然
+    # 主打项目由 Python 选定（按 JD 关键词优先，无命中则走默认），模型只负责把它讲自然
     proj, proj_hits = _pick_project(row, profile)
+
+    # 从 JD 里挑出这个岗位真正在意的技术词，点名让 AI 在话术里呼应
+    jd_tech = extract_jd_tech(jd)
+
     if proj:
+        tools_txt = '、'.join(proj.get('tools', []))
         project_rule = (
-            f"2. **第二句必须讲下面这个指定项目，不要换成你背景里别的项目：**\n"
-            f"   项目名：{proj['name']}\n"
-            f"   素材：{proj['desc']}\n"
-            f"   讲一句就够，突出你实际动手做过、能落地，不要罗列技术名词。"
+            f"2. **第二句讲下面这个指定经历，不要换成你背景里别的经历：**\n"
+            f"   可选技术名：{tools_txt}\n"
+            f"   做出来能干嘛：{proj['desc']}\n"
+            f"   要求：**从「可选技术名」里挑 1 个念出来就够，不要三个都念**"
+            f"（挑跟这个岗位最相关的那个）。重点是说清拿它做成了什么，"
+            f"不要报项目名，也不要把技术名堆成一串。"
         )
     else:
-        project_rule = "2. 第二句讲一个你最相关的项目经历，突出你实际动手做过、能落地。"
+        project_rule = "2. 第二句讲一个你最相关的项目经历，先说用了什么技术，再说做成了什么。"
+
+    # JD 技术词呼应要求：只在真的提取到词时才加，避免空规则干扰模型
+    if jd_tech:
+        tech_rule = (
+            f"3. 从上面「岗位描述」里挑 1-2 个最具体的技术点来呼应"
+            f"（这个岗位明确提到了：{'、'.join(jd_tech)}），"
+            f"说明你正好做过对应的事。**只挑 1-2 个，不要全念一遍，也不要罗列。**"
+        )
+    else:
+        tech_rule = "3. 如果岗位描述里提到了具体技术，挑 1-2 个最相关的进行呼应，不要罗列。"
 
     # 画像摘要只截前 320 字：塞满 4 个项目时模型会贪心地全写进去，导致话术超长
     profile_brief = profile['personal_summary'].strip()[:320]
@@ -806,11 +928,11 @@ def generate_greeting(row, profile):
    「{opening}」
    **不要出现"2026届""应届生""本科毕业生"等身份标签**，除非 JD 里明确写了"欢迎应届生""校招""应届"。
 {project_rule}
-3. 第三句表达"能快速上手"这个岗位的工作，用"期待有机会进一步沟通"结尾。
-4. 不要写"面试回复率提升至XX%"这类个人求职数据。
-5. 不要出现"GitHub""开源""代码可查""代码仓库"等词，也不要写任何网址。
-6. 不要罗列技能清单，要像人在说话。
-7. 语气：正式、专业、诚恳，不要浮夸。
+{tech_rule}
+4. 结尾用"期待有机会进一步沟通"。
+5. 不要写"面试回复率提升至XX%"这类个人求职数据。
+6. 不要出现"GitHub""开源""代码可查""代码仓库"等词，也不要写任何网址。
+7. **不要列成"我熟悉A、B、C"这种清单**——技术名要揉进句子里说，像在讲自己做过的一件事。
 8. 直接输出招呼语正文，不要加任何额外说明或引号。总长度控制在 100 字以内。
 
 招呼语："""
