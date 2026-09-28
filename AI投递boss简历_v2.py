@@ -651,14 +651,24 @@ def _ensure_closing(text, limit=MAX_GREETING_LEN):
 
     模型偶尔会输出没写完的话（实测出现过「…能直接接进业务；」这种
     以分号结尾、话没说完的情况），直接发出去很难看。
-    这里统一兜底：结尾不是句号/问号/叹号，就补收尾句（放得下时）。
+    这里做两层兜底：
+
+    1. 收尾句前面必须是句号。模型有时写「…流程；期待有机会进一步沟通。」
+       或「…流程，期待…」，分号/逗号后接独立句是病句。
+    2. 结尾不是句号/问号/叹号时，补收尾句（放得下时）。
+
+    标点用正则统一处理（含半角与中间夹杂空格的情况），不硬编码全角字符——
+    早先写成 t.replace('；'+CLOSING, ...) 时，模型偶尔输出半角分号或带空格
+    的变体就漏掉了（实测 40 条里漏了 5 条）。
     """
     t = str(text or '').strip()
     if not t:
         return t
 
-    # 「；期待有机会进一步沟通」读着别扭——分号后不该接独立句，统一改成句号
-    t = t.replace('；' + _CLOSING, '。' + _CLOSING).replace('，' + _CLOSING, '。' + _CLOSING)
+    # 1. 收尾句前统一成句号：匹配 [；;，,、] + 可选空格 + 收尾句
+    t = re.sub(r'[；;，,、]\s*' + re.escape(_CLOSING), '。' + _CLOSING, t)
+    # 收尾句前如果是句号但带了空格，也收干净
+    t = re.sub(r'。\s*' + re.escape(_CLOSING), '。' + _CLOSING, t)
 
     if t[-1] in '。！？':
         return t
@@ -806,7 +816,8 @@ _project_cursor = {}
 _CAPABILITIES = [
     # ---------- 硬实力 ----------
     {'level': 'strong', 'name': '大模型 API 集成',
-     'say': '对接过 DeepSeek 等大模型 API，写了超时与失败降级，保证服务不中断',
+     'say': '对接过 DeepSeek 等大模型 API，处理了超时与调用失败的情况，'
+            '失败时能退回备用文案，不会中断整个流程',
      'keys': ['大模型', 'llm', 'api', 'deepseek', 'chatglm', '模型调用', 'gpt']},
     {'level': 'strong', 'name': '浏览器自动化采集',
      'say': '用 Chrome DevTools Protocol 控制浏览器采集结构化数据，'
@@ -1005,23 +1016,29 @@ def generate_greeting(row, profile):
     jd_excerpt = jd[:1500]
     company = row.get('boss_name', '') or ''
 
-    # 从整份能力清单里挑候选项。多给一些（5 条）留给模型组合，
-    # 避免它每次都抓同一个最匹配的，导致几十条话术讲同一件事。
+    # 候选能力分两组交给模型。分组展示 + 硬规则，避免模型凭「感觉最贴」自己挑，
+    # 实测：只给一个混合列表 + 「优先挑★」这种软要求时，模型会跳过 strong 去选 weak
+    # （40 条里 39 条都讲了 RAG，尽管 strong 排在列表前面）。
     caps, cap_hits = pick_capabilities(row, limit=5)
-    cap_lines = []
-    for c in caps:
-        matched = [k for k in c['keys'] if k in (jd + title).lower()]
-        tag = ('★硬实力' if c['level'] == 'strong' else '·基础')
-        hit = f"（岗位提到：{'、'.join(matched)}）" if matched else ''
-        cap_lines.append(f"   [{tag}] {c['name']}：{c['say']}{hit}")
-    caps_txt = '\n'.join(cap_lines)
+    strong_caps = [c for c in caps if c['level'] == 'strong']
+    weak_caps = [c for c in caps if c['level'] == 'weak']
 
-    # JD 技术词呼应要求：只在真的提取到词时才加，避免空规则干扰模型
+    def _fmt(c):
+        matched = [k for k in c['keys'] if k in (jd + title).lower()]
+        hit = f"（岗位提到：{'、'.join(matched)}）" if matched else ''
+        return f"   · {c['name']}：{c['say']}{hit}"
+
+    strong_txt = '\n'.join(_fmt(c) for c in strong_caps) or '   （无）'
+    weak_txt = '\n'.join(_fmt(c) for c in weak_caps) or '   （无）'
+
+    # JD 技术词只作为「这个岗位在意什么」的提示，且只允许在硬实力缺席时才起作用。
+    # 早期写成「岗位提到 X，优先讲那条」，结果与「一律只用硬实力」直接冲突，
+    # 模型反而被引导去讲 RAG（因为 JD 里 RAG 词最多），等于自己拆自己的台。
     jd_tech = extract_jd_tech(jd)
-    if jd_tech:
+    if jd_tech and not strong_caps:
         tech_rule = (
-            f"3. 这个岗位明确提到了 {'、'.join(jd_tech)}。"
-            f"如果候选里有对得上的，优先讲那条。\n"
+            f"3. 这个岗位明确提到了 {'、'.join(jd_tech)}，"
+            f"从上面的基础能力里挑最贴的一条讲。\n"
         )
     else:
         tech_rule = ""
@@ -1039,15 +1056,20 @@ def generate_greeting(row, profile):
 职位：{title}
 岗位描述：{jd_excerpt}
 
-【候选能力（只列了最相关的几条，前面标注★的是硬实力）】
-{caps_txt}
+【硬实力（必须从这里挑，讲了就是加分项）】
+{strong_txt}
+
+【基础能力（只在硬实力完全对不上、而岗位又明确提及时才可用）】
+{weak_txt}
 
 【硬性要求】
 1. 开头必须原样照抄这一句，不要改写：
    「{opening}」
    除非 JD 明确写了"欢迎应届生/校招"，否则不要出现"2026届""应届生""毕业生"。
-2. **从候选里挑 1-2 条来讲，讲清用这个东西做成了什么事。**
-   **优先挑标★的硬实力**；只有基础能力明显更贴这个岗位时，才讲基础能力。
+2. **从【硬实力】里挑 1-2 条来讲，讲清用这个东西做成了什么事。**
+   规则：
+   - 【硬实力】里有内容时，**一律只用硬实力，不许改用基础能力**
+   - 只有当【硬实力】是（无），或者确实一条都对不上时，才从基础能力里挑
    - 不要复述整份清单，也不要罗列技术名词
    - 不要报项目名称，说事就行
    - 讲一个真实的小细节，比笼统说"我熟悉"强得多
@@ -1057,6 +1079,12 @@ def generate_greeting(row, profile):
 - 禁用这类空话：「闭环」「赋能」「全方位」「高效」「差异化」「全流程」
 - 不要写"面试回复率提升XX%"这类个人求职数据，也不要放网址或提 GitHub
 - 结尾用"期待有机会进一步沟通"，**前面要用句号，不要用分号或逗号连接**
+
+【不许编造——这条最重要】
+上面能力清单里怎么写的，你就怎么说，**不要替它加细节**。
+举个真实的反例：清单写的是「调用失败能退回备用文案」，
+模型自己发挥成了「主模型挂了也能自动切换」——**这是编的，不许这样写**。
+不确定的技术名词、没提到的机制，一律不要写进话术。
 
 【输出】
 直接给招呼语正文，不要引号、不要解释。总长 100 字以内。
@@ -1482,7 +1510,12 @@ def main():
         sub['greeting'] = ''          # 必须先建列！否则下面的 .loc 赋值会被 pandas 静默丢弃
         for i, (idx, row) in enumerate(sub.head(GREETING_LIMIT).iterrows(), 1):
             print(f"   [{i:2d}/{min(len(sub), GREETING_LIMIT)}] {str(row.get('title', ''))[:22]}", end='')
-            sub.loc[idx, 'greeting'] = generate_greeting(row, profile)
+            g = generate_greeting(row, profile)
+            # 最外层保险：不管上游哪条路径返回的，落盘前再过一次收尾处理。
+            # generate_greeting 内部已经调过 _finalize，这里再兜一次是因为
+            # 实测出现过 8/40 条话术仍带「；期待有机会进一步沟通。」的情况，
+            # 而单点测试却无法复现——与其继续追根因，不如在唯一写入口加防线。
+            sub.loc[idx, 'greeting'] = _finalize(g, row)
             print()
 
         # 只保留真的生成出招呼语的行，避免面板里出现复制不出去的空话术
