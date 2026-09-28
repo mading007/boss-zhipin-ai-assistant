@@ -68,7 +68,11 @@ PROFILE_AI = {
                        'Prompt', '大模型', 'LLM', '语义检索', 'Embedding', 'AI应用'],
     # 命中这些的扣分（明显不是你要的方向）
     'penalty_keywords': ['算法工程师', '深度学习', '模型训练', '微调', 'PyTorch', 'TensorFlow',
-                         'NLP算法', 'CV算法', '推荐算法', '硕士'],
+                         'NLP算法', 'CV算法', '推荐算法', '硕士',
+                         # 运营类不是不能干，但跟开发技能不对口，降权即可
+                         '运营', '客服', '销售', '市场'],
+    # 这些岗位即使 JD 里堆满 AI 关键词也不投——技能完全不匹配，纯浪费
+    'exclude_title_pattern': r'讲师|培训师|咨询师|课程|营销|渠道|代理|推广|主播|带货|地推',
     'personal_summary': """
 我是马丁，2026届电子信息工程本科毕业生，可立即到岗，期望城市北京。
 
@@ -548,16 +552,17 @@ def score_row(row, profile):
 # 第五步：招呼语生成（按赛道路由项目，不再"默认讲爬虫"）
 # ============================================================
 def _fallback_greeting(row, profile, opening=None):
-    """API 不可用时的降级模板。开头与项目都沿用 Python 侧的选定结果，
-    避免 API 挂掉时 40 条话术开头和正文全都一样。"""
+    """API 不可用时的降级模板。
+
+    开头与能力都沿用 Python 侧的选定结果，避免 API 挂掉时
+    几十条话术的开头和正文全都雷同。
+    """
     name = '马丁'
     opening = opening or f"您好，我是{name}。"
-    proj, _ = _pick_project(row, profile)
+    caps, _ = pick_capabilities(row, limit=2)
 
-    if proj:
-        tools_txt = '、'.join(proj.get('tools', []))
-        body = (f"我用 {tools_txt} {proj['desc']}。"
-                f"这个岗位我很感兴趣，期待有机会进一步沟通。")
+    if caps:
+        body = '；'.join(c['say'] for c in caps) + "。期待有机会进一步沟通。"
     else:
         body = "我做过与这个岗位方向相关的完整项目，能独立把事情落地。期待有机会进一步沟通。"
 
@@ -641,10 +646,42 @@ def _cap_length(text, limit=MAX_GREETING_LEN):
     return _trim_to_sentence(text, limit)
 
 
+def _ensure_closing(text, limit=MAX_GREETING_LEN):
+    """保证话术以完整句子收尾。
+
+    模型偶尔会输出没写完的话（实测出现过「…能直接接进业务；」这种
+    以分号结尾、话没说完的情况），直接发出去很难看。
+    这里统一兜底：结尾不是句号/问号/叹号，就补收尾句（放得下时）。
+    """
+    t = str(text or '').strip()
+    if not t:
+        return t
+
+    # 「；期待有机会进一步沟通」读着别扭——分号后不该接独立句，统一改成句号
+    t = t.replace('；' + _CLOSING, '。' + _CLOSING).replace('，' + _CLOSING, '。' + _CLOSING)
+
+    if t[-1] in '。！？':
+        return t
+    # 去掉悬空的标点
+    core = t.rstrip('，,、；;：: ')
+    if not core:
+        return t
+    if core[-1] in '。！？':
+        return core
+    if not core.endswith(_CLOSING.rstrip('。')) and len(core) + len(_CLOSING) <= limit:
+        return core + '。' + _CLOSING
+    return core + '。'
+
+
 def _finalize(text, row, opening_unused=None):
-    """统一收口：先决定要不要附仓库链接，再做长度兜底。
-    顺序很重要——反过来的话，附加的链接会把总长度顶超上限。"""
-    return _cap_length(_attach_oss(str(text or '').strip(), row))
+    """统一收口。顺序很重要：
+
+    1. 先补收尾句 / 去掉悬空标点（模型偶尔输出没写完的话）
+    2. 再决定要不要附仓库链接
+    3. 最后做长度兜底（反过来的话，附加的链接会把总长度顶超上限）
+    """
+    t = _ensure_closing(str(text or '').strip())
+    return _cap_length(_attach_oss(t, row))
 
 
 def _attach_oss(greeting, row):
@@ -718,7 +755,7 @@ _PROJECTS = {
             'name': '金融终端自动化导出系统',
             'tools': ['Python', '图像识别定位', '模拟键鼠操作'],
             'desc': '做过一套无人值守的桌面自动化程序：自动完成导出、加时间戳归档、'
-                    '按日期合并汇总并邮件发送，主动处理了弹窗等异常分支，'
+                    '按日期合并汇总并邮件发送，'
                     '打包成 exe 让非技术同事直接双击使用，上线后每天省下 30 分钟人工操作',
             'keys': ['自动化脚本', '定时任务', '无人值守', 'windows', '桌面',
                      'exe', '批量处理', '运维'],
@@ -726,8 +763,8 @@ _PROJECTS = {
         {
             'name': '智能求职助手',
             'tools': ['Chrome DevTools Protocol', '元素定位', '结构化采集'],
-            'desc': '用 CDP 控制浏览器稳定采集数据结构化落库，并针对元素失效、页面加载'
-                    '超时等情况做了重试与降级处理，保证长时间运行不中断',
+            'desc': '用 CDP 控制浏览器采集结构化数据，针对元素失效、'
+                    '页面加载超时做了等待与异常处理，保证长时间运行不中断',
             'keys': ['selenium', 'playwright', 'appium', 'ui自动化', '元素定位',
                      '爬虫', '抓取', 'cdp', 'chromedriver', 'web自动化'],
         },
@@ -753,6 +790,93 @@ _PROJECTS = {
     ],
 }
 _project_cursor = {}
+
+
+# ============================================================
+# 能力清单：按「岗位要求 → 能力 → 一句话说法」组织
+# ============================================================
+# 生成话术时不再「先定讲哪段经历」，而是把整份清单交给模型，
+# 让它按 JD 挑 2-3 条最对得上的能力来讲。表述组合本身在变，
+# 就不会再出现「同一段经历换 72 种说法」。
+#
+# level 的含义：
+#   'strong' —— 技术上硬、可验证，优先挑
+#   'weak'   —— 比较基础（本人自评），除非岗位明确要求，否则不挑
+# keys 用于和 JD 匹配，命中的能力在提示词里会被标注出来
+_CAPABILITIES = [
+    # ---------- 硬实力 ----------
+    {'level': 'strong', 'name': '大模型 API 集成',
+     'say': '对接过 DeepSeek 等大模型 API，写了超时与失败降级，保证服务不中断',
+     'keys': ['大模型', 'llm', 'api', 'deepseek', 'chatglm', '模型调用', 'gpt']},
+    {'level': 'strong', 'name': '浏览器自动化采集',
+     'say': '用 Chrome DevTools Protocol 控制浏览器采集结构化数据，'
+            '处理过页面加载超时与元素失效',
+     'keys': ['cdp', '爬虫', '采集', '抓取', 'selenium', 'playwright']},
+    {'level': 'strong', 'name': '匹配排序算法',
+     'say': '用 TF-IDF 与余弦相似度做相关性排序，把杂乱数据筛成有优先级的清单',
+     'keys': ['tf-idf', '相似度', '排序', '匹配算法', '召回', '检索排序']},
+    {'level': 'strong', 'name': '无人值守自动化',
+     'say': '写过定时运行的自动化程序，导出、归档到邮件发送全程无人值守，'
+            '打包成 exe 让非技术同事直接双击使用',
+     'keys': ['自动化', '定时', '无人值守', 'rpa', '批量处理', '运维']},
+    {'level': 'strong', 'name': 'Excel 数据处理',
+     'say': '用 Python 自动生成与合并 Excel，按日期归档并做多表汇总',
+     'keys': ['excel', 'openpyxl', '表格', '报表', '数据处理']},
+    # ---------- 基础能力：岗位明确要求时才讲 ----------
+    # 注意粒度：RAG 拆成三条而不是一条。
+    # 原来只有一条「RAG 知识库问答」，于是所有 RAG 类岗位都只能选它，
+    # 40 条话术里一大半在讲同一件事。拆细之后才有组合空间。
+    {'level': 'weak', 'name': '文档解析与切分',
+     'say': '处理过 PDF 等非结构化文档，做过解析、按语义切分和清洗',
+     'keys': ['pdf', '文档', '解析', '切分', '非结构化']},
+    {'level': 'weak', 'name': '向量检索',
+     'say': '把文档向量化后存进向量库做语义检索，比关键词匹配找得准',
+     'keys': ['向量', 'chroma', 'embedding', '语义检索', '召回', 'milvus', 'faiss']},
+    {'level': 'weak', 'name': 'RAG 链路搭建',
+     'say': '用 LangChain 串起检索与生成，回答会带原文出处，方便核对',
+     'keys': ['rag', 'langchain', '检索增强', '知识库']},
+    {'level': 'weak', 'name': '接口调用与校验',
+     'say': '写过接口联调脚本，会校验返回结构和异常分支',
+     'keys': ['接口', 'api测试', 'requests', 'http', 'postman']},
+    {'level': 'weak', 'name': 'Prompt 工程',
+     'say': '用结构化 Prompt 模板控制生成结果的一致性，把可复现性提上来',
+     'keys': ['prompt', '提示词', 'aigc', '文生图', '生图', '多模态']},
+    {'level': 'weak', 'name': '数据清洗与分析',
+     'say': '用 Pandas 做数据清洗与统计，输出可分析的结构化结果',
+     'keys': ['pandas', '数据清洗', '数据分析', 'numpy']},
+]
+
+
+def pick_capabilities(row, limit=3):
+    """按 JD 挑能力，返回 (选中列表, 命中的关键词集合)。
+
+    排序规则（按优先级从高到低）：
+      1. strong 且命中 JD  —— 硬实力且对口，最优先
+      2. weak 且命中 JD    —— 岗位明确要求，可以讲
+      3. strong 未命中     —— 硬实力但不对口，兜底用
+      4. weak 未命中       —— 不讲
+
+    注意：不能把 strong 当权重加在命中数上——那样 weak 命中 3 个词
+    会压过 strong 命中 2 个词，结果硬实力被基础能力挤掉（实测踩过）。
+    必须让 strong 作为独立的优先分组。
+    """
+    blob = (str(row.get('jd', '')) + ' ' + str(row.get('title', ''))).lower()
+
+    strong_hit, weak_hit, strong_miss = [], [], []
+    for cap in _CAPABILITIES:
+        hits = [k for k in cap['keys'] if k in blob]
+        bucket = (strong_hit if cap['level'] == 'strong' else weak_hit) if hits else None
+        if bucket is not None:
+            bucket.append((len(hits), cap, hits))
+        elif cap['level'] == 'strong':
+            strong_miss.append((0, cap, []))
+
+    for b in (strong_hit, weak_hit, strong_miss):
+        b.sort(key=lambda x: -x[0])
+
+    ordered = strong_hit + weak_hit + strong_miss
+    chosen = ordered[:limit]
+    return [c[1] for c in chosen], {k for c in chosen for k in c[2]}
 
 # 关键词全都没命中时，默认讲哪个项目。
 # QA 用金融终端（测试岗硬通货：无人值守 + 异常处理 + 打包交付）；
@@ -881,41 +1005,33 @@ def generate_greeting(row, profile):
     jd_excerpt = jd[:1500]
     company = row.get('boss_name', '') or ''
 
-    # 主打项目由 Python 选定（按 JD 关键词优先，无命中则走默认），模型只负责把它讲自然
-    proj, proj_hits = _pick_project(row, profile)
-
-    # 从 JD 里挑出这个岗位真正在意的技术词，点名让 AI 在话术里呼应
-    jd_tech = extract_jd_tech(jd)
-
-    if proj:
-        tools_txt = '、'.join(proj.get('tools', []))
-        project_rule = (
-            f"2. **第二句讲下面这个指定经历，不要换成你背景里别的经历：**\n"
-            f"   可选技术名：{tools_txt}\n"
-            f"   做出来能干嘛：{proj['desc']}\n"
-            f"   要求：**从「可选技术名」里挑 1 个念出来就够，不要三个都念**"
-            f"（挑跟这个岗位最相关的那个）。重点是说清拿它做成了什么，"
-            f"不要报项目名，也不要把技术名堆成一串。"
-        )
-    else:
-        project_rule = "2. 第二句讲一个你最相关的项目经历，先说用了什么技术，再说做成了什么。"
+    # 从整份能力清单里挑候选项。多给一些（5 条）留给模型组合，
+    # 避免它每次都抓同一个最匹配的，导致几十条话术讲同一件事。
+    caps, cap_hits = pick_capabilities(row, limit=5)
+    cap_lines = []
+    for c in caps:
+        matched = [k for k in c['keys'] if k in (jd + title).lower()]
+        tag = ('★硬实力' if c['level'] == 'strong' else '·基础')
+        hit = f"（岗位提到：{'、'.join(matched)}）" if matched else ''
+        cap_lines.append(f"   [{tag}] {c['name']}：{c['say']}{hit}")
+    caps_txt = '\n'.join(cap_lines)
 
     # JD 技术词呼应要求：只在真的提取到词时才加，避免空规则干扰模型
+    jd_tech = extract_jd_tech(jd)
     if jd_tech:
         tech_rule = (
-            f"3. 从上面「岗位描述」里挑 1-2 个最具体的技术点来呼应"
-            f"（这个岗位明确提到了：{'、'.join(jd_tech)}），"
-            f"说明你正好做过对应的事。**只挑 1-2 个，不要全念一遍，也不要罗列。**"
+            f"3. 这个岗位明确提到了 {'、'.join(jd_tech)}。"
+            f"如果候选里有对得上的，优先讲那条。\n"
         )
     else:
-        tech_rule = "3. 如果岗位描述里提到了具体技术，挑 1-2 个最相关的进行呼应，不要罗列。"
+        tech_rule = ""
 
-    # 画像摘要只截前 320 字：塞满 4 个项目时模型会贪心地全写进去，导致话术超长
-    profile_brief = profile['personal_summary'].strip()[:320]
+    # 画像摘要只截前 200 字：完整摘要里塞了 4 个项目，模型会贪心全写进去
+    profile_brief = profile['personal_summary'].strip()[:200]
 
-    prompt = f"""请根据以下信息，为求职者撰写一段发给HR的打招呼语（80-95字，不要超过100字）：
+    prompt = f"""给下面这个岗位写一段打招呼语。
 
-【求职者背景】
+【求职者】
 {profile_brief}
 
 【目标岗位】
@@ -923,19 +1039,37 @@ def generate_greeting(row, profile):
 职位：{title}
 岗位描述：{jd_excerpt}
 
-【要求】
-1. **开头必须用下面指定的这一句，原样照抄，不要改写、不要换别的说法：**
+【候选能力（只列了最相关的几条，前面标注★的是硬实力）】
+{caps_txt}
+
+【硬性要求】
+1. 开头必须原样照抄这一句，不要改写：
    「{opening}」
-   **不要出现"2026届""应届生""本科毕业生"等身份标签**，除非 JD 里明确写了"欢迎应届生""校招""应届"。
-{project_rule}
+   除非 JD 明确写了"欢迎应届生/校招"，否则不要出现"2026届""应届生""毕业生"。
+2. **从候选里挑 1-2 条来讲，讲清用这个东西做成了什么事。**
+   **优先挑标★的硬实力**；只有基础能力明显更贴这个岗位时，才讲基础能力。
+   - 不要复述整份清单，也不要罗列技术名词
+   - 不要报项目名称，说事就行
+   - 讲一个真实的小细节，比笼统说"我熟悉"强得多
 {tech_rule}
-4. 结尾用"期待有机会进一步沟通"。
-5. 不要写"面试回复率提升至XX%"这类个人求职数据。
-6. 不要出现"GitHub""开源""代码可查""代码仓库"等词，也不要写任何网址。
-7. **不要列成"我熟悉A、B、C"这种清单**——技术名要揉进句子里说，像在讲自己做过的一件事。
-8. 直接输出招呼语正文，不要加任何额外说明或引号。总长度控制在 100 字以内。
+【风格】
+- 像人在跟人说话，不要写成简历摘要
+- 禁用这类空话：「闭环」「赋能」「全方位」「高效」「差异化」「全流程」
+- 不要写"面试回复率提升XX%"这类个人求职数据，也不要放网址或提 GitHub
+- 结尾用"期待有机会进一步沟通"，**前面要用句号，不要用分号或逗号连接**
+
+【输出】
+直接给招呼语正文，不要引号、不要解释。总长 100 字以内。
 
 招呼语："""
+
+    system_prompt = (
+        "你是一位有 5 年经验的求职顾问，熟悉招聘方的阅读习惯：\n"
+        "初筛 HR 平均 3 秒扫一条消息，他只看三件事——\n"
+        "这个人能干这个活吗？他跟岗位哪里对得上？他靠谱吗？\n\n"
+        "你的任务不是复述求职者的经历，而是从给到的能力清单里挑出最对得上的，"
+        "用具体、自然的话讲出来。宁可讲一个真实的小细节，也不要讲一堆正确的空话。"
+    )
 
     try:
         resp = requests.post(
@@ -944,11 +1078,10 @@ def generate_greeting(row, profile):
             json={
                 'model': DEEPSEEK_CONFIG['model'],
                 'messages': [
-                    {'role': 'system',
-                     'content': '你是一位专业的求职顾问，擅长帮求职者写出真诚、有吸引力、突出项目能力的打招呼语。'},
+                    {'role': 'system', 'content': system_prompt},
                     {'role': 'user', 'content': prompt},
                 ],
-                'temperature': 0.8,
+                'temperature': 0.85,
                 'max_tokens': 300,
             },
             timeout=20,
