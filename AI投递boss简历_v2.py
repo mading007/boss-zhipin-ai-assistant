@@ -723,83 +723,88 @@ _FRESH_PATTERN = re.compile(r'应届|校招|校园招聘|欢迎应届')
 _opening_seq = []
 _opening_lock = None
 
-# ---------- 主打项目：同样由 Python 决定，不交给模型 ----------
-# 每个项目配一组「JD 命中词」。命中最多者优先；都不命中时按顺序轮换，
-# 避免 40 条话术全都讲同一个项目（实测同一批 10 条全讲金融终端，很像群发）。
-# 每个项目配三样东西：
-#   name  项目内部名（也用于降级模板）
-#   tools 可被念出来的技术名 —— 招呼语要**先亮这些词**，HR 扫一眼就能命中关键词
-#   desc  做出来能干嘛（业务价值），不要写成「我怎么实现的」
-#   keys  命中词，用于判断这个岗位该讲哪个项目
-#
-# 命名注意：不要把项目叫成「XX论文系统」——「论文」两字会让人一眼判定是课程作业。
-_PROJECTS = {
-    'ai': [
-        {
-            'name': '智能求职助手',
-            'tools': ['Chrome DevTools Protocol', 'TF-IDF', '大模型 API'],
-            'desc': '做过一个从数据采集到内容生成的全链路 AI 应用：自动采集结构化数据、'
-                    '用 TF-IDF 与余弦相似度做匹配排序、再调大模型 API 生成定制内容，'
-                    '并用网页面板把整条流程承接起来',
-            'keys': ['agent', '智能体', 'mcp', '工具调用', 'workflow', '编排',
-                     'function calling', '全栈', '端到端', '闭环'],
-        },
-        {
-            'name': '知识库问答',
-            'tools': ['LangChain', 'Chroma', 'BGE Embedding'],
-            'desc': '用这套做过一套面向企业内部文档的问答服务：把 PDF 等非结构化文档'
-                    '解析、切分、向量化后做语义检索，回答带原文出处，能直接接进业务系统',
-            'keys': ['rag', 'langchain', 'chroma', '向量', '知识库', '语义检索',
-                     'embedding', '召回', '检索增强', '问答'],
-        },
-        {
-            'name': 'AI图像批量生成',
-            'tools': ['Prompt Engineering', '结构化模板'],
-            'desc': '用结构化 Prompt 模板控制光源、色调、景别、场景等维度做批量生成，'
-                    '把出图一致性从六成提到九成以上，并沉淀成可复用的检查清单',
-            'keys': ['prompt', '提示词', 'aigc', '图像', '生图', '风格', '多模态', '文生图'],
-        },
-    ],
-    'qa': [
-        {
-            'name': '金融终端自动化导出系统',
-            'tools': ['Python', '图像识别定位', '模拟键鼠操作'],
-            'desc': '做过一套无人值守的桌面自动化程序：自动完成导出、加时间戳归档、'
-                    '按日期合并汇总并邮件发送，'
-                    '打包成 exe 让非技术同事直接双击使用，上线后每天省下 30 分钟人工操作',
-            'keys': ['自动化脚本', '定时任务', '无人值守', 'windows', '桌面',
-                     'exe', '批量处理', '运维'],
-        },
-        {
-            'name': '智能求职助手',
-            'tools': ['Chrome DevTools Protocol', '元素定位', '结构化采集'],
-            'desc': '用 CDP 控制浏览器采集结构化数据，针对元素失效、'
-                    '页面加载超时做了等待与异常处理，保证长时间运行不中断',
-            'keys': ['selenium', 'playwright', 'appium', 'ui自动化', '元素定位',
-                     '爬虫', '抓取', 'cdp', 'chromedriver', 'web自动化'],
-        },
-        {
-            'name': '接口联调与数据处理',
-            'tools': ['Python 接口调用', 'HTTP 协议', 'JSON 结构校验'],
-            'desc': '日常用 Python 做接口联调与数据清洗，能根据返回结构写字段校验与'
-                    '异常分支处理，把接口数据整理成可直接分析的表格',
-            # 只放「接口测试」这类专有说法。
-            # 早期误放了 'http'、'requests' 等泛词，导致 50% 测试岗都被判成这一项。
-            'keys': ['接口测试', '接口自动化', 'api测试', 'api自动化',
-                     'postman', 'jmeter', '接口联调'],
-        },
-        {
-            'name': '知识库问答',
-            'tools': ['LangChain', 'Chroma', 'RAG 链路验证'],
-            'desc': '搭过检索增强问答的完整链路，并对切分粒度、召回效果逐环节做过对比验证，'
-                    '能为 AI 类产品的效果评估提供可复用的方法',
-            # 这里只保留 AI 测试专用词。原先放了 '大模型''ai应用' 等泛词，
-            # 几乎每个 AI 岗都会命中，把本该分给其它项目的岗位全抢走了。
-            'keys': ['ai测试', '模型评测', '大模型测试', 'rag', 'llm'],
-        },
-    ],
-}
-_project_cursor = {}
+# ============================================================
+# 以下代码已停用，保留供参考 —— 话术生成已从「按项目匹配」
+# 改为「按能力清单匹配」（见 _CAPABILITIES / pick_capabilities / cap_say）。
+# 此处没有调用点，保留是为了避免以后重新推导这段设计。
+# ============================================================
+# # ---------- 主打项目：同样由 Python 决定，不交给模型 ----------
+# # 每个项目配一组「JD 命中词」。命中最多者优先；都不命中时按顺序轮换，
+# # 避免 40 条话术全都讲同一个项目（实测同一批 10 条全讲金融终端，很像群发）。
+# # 每个项目配三样东西：
+# #   name  项目内部名（也用于降级模板）
+# #   tools 可被念出来的技术名 —— 招呼语要**先亮这些词**，HR 扫一眼就能命中关键词
+# #   desc  做出来能干嘛（业务价值），不要写成「我怎么实现的」
+# #   keys  命中词，用于判断这个岗位该讲哪个项目
+# #
+# # 命名注意：不要把项目叫成「XX论文系统」——「论文」两字会让人一眼判定是课程作业。
+# _PROJECTS = {
+#     'ai': [
+#         {
+#             'name': '智能求职助手',
+#             'tools': ['Chrome DevTools Protocol', 'TF-IDF', '大模型 API'],
+#             'desc': '做过一个从数据采集到内容生成的全链路 AI 应用：自动采集结构化数据、'
+#                     '用 TF-IDF 与余弦相似度做匹配排序、再调大模型 API 生成定制内容，'
+#                     '并用网页面板把整条流程承接起来',
+#             'keys': ['agent', '智能体', 'mcp', '工具调用', 'workflow', '编排',
+#                      'function calling', '全栈', '端到端', '闭环'],
+#         },
+#         {
+#             'name': '知识库问答',
+#             'tools': ['LangChain', 'Chroma', 'BGE Embedding'],
+#             'desc': '用这套做过一套面向企业内部文档的问答服务：把 PDF 等非结构化文档'
+#                     '解析、切分、向量化后做语义检索，回答带原文出处，能直接接进业务系统',
+#             'keys': ['rag', 'langchain', 'chroma', '向量', '知识库', '语义检索',
+#                      'embedding', '召回', '检索增强', '问答'],
+#         },
+#         {
+#             'name': 'AI图像批量生成',
+#             'tools': ['Prompt Engineering', '结构化模板'],
+#             'desc': '用结构化 Prompt 模板控制光源、色调、景别、场景等维度做批量生成，'
+#                     '把出图一致性从六成提到九成以上，并沉淀成可复用的检查清单',
+#             'keys': ['prompt', '提示词', 'aigc', '图像', '生图', '风格', '多模态', '文生图'],
+#         },
+#     ],
+#     'qa': [
+#         {
+#             'name': '金融终端自动化导出系统',
+#             'tools': ['Python', '图像识别定位', '模拟键鼠操作'],
+#             'desc': '做过一套无人值守的桌面自动化程序：自动完成导出、加时间戳归档、'
+#                     '按日期合并汇总并邮件发送，'
+#                     '打包成 exe 让非技术同事直接双击使用，上线后每天省下 30 分钟人工操作',
+#             'keys': ['自动化脚本', '定时任务', '无人值守', 'windows', '桌面',
+#                      'exe', '批量处理', '运维'],
+#         },
+#         {
+#             'name': '智能求职助手',
+#             'tools': ['Chrome DevTools Protocol', '元素定位', '结构化采集'],
+#             'desc': '用 CDP 控制浏览器采集结构化数据，针对元素失效、'
+#                     '页面加载超时做了等待与异常处理，保证长时间运行不中断',
+#             'keys': ['selenium', 'playwright', 'appium', 'ui自动化', '元素定位',
+#                      '爬虫', '抓取', 'cdp', 'chromedriver', 'web自动化'],
+#         },
+#         {
+#             'name': '接口联调与数据处理',
+#             'tools': ['Python 接口调用', 'HTTP 协议', 'JSON 结构校验'],
+#             'desc': '日常用 Python 做接口联调与数据清洗，能根据返回结构写字段校验与'
+#                     '异常分支处理，把接口数据整理成可直接分析的表格',
+#             # 只放「接口测试」这类专有说法。
+#             # 早期误放了 'http'、'requests' 等泛词，导致 50% 测试岗都被判成这一项。
+#             'keys': ['接口测试', '接口自动化', 'api测试', 'api自动化',
+#                      'postman', 'jmeter', '接口联调'],
+#         },
+#         {
+#             'name': '知识库问答',
+#             'tools': ['LangChain', 'Chroma', 'RAG 链路验证'],
+#             'desc': '搭过检索增强问答的完整链路，并对切分粒度、召回效果逐环节做过对比验证，'
+#                     '能为 AI 类产品的效果评估提供可复用的方法',
+#             # 这里只保留 AI 测试专用词。原先放了 '大模型''ai应用' 等泛词，
+#             # 几乎每个 AI 岗都会命中，把本该分给其它项目的岗位全抢走了。
+#             'keys': ['ai测试', '模型评测', '大模型测试', 'rag', 'llm'],
+#         },
+#     ],
+# }
+# _project_cursor = {}
 
 
 # ============================================================
@@ -947,43 +952,48 @@ def pick_capabilities(row, limit=3):
     chosen = ordered[:limit]
     return [c[1] for c in chosen], {k for c in chosen for k in c[2]}
 
-# 关键词全都没命中时，默认讲哪个项目。
-# QA 用金融终端（测试岗硬通货：无人值守 + 异常处理 + 打包交付）；
-# AI 用智能求职助手（技术链路最全：采集 + 匹配算法 + 大模型 API + 前端面板）。
-DEFAULT_PROJECT = {
-    'ai': '智能求职助手',
-    'qa': '金融终端自动化导出系统',
-}
-
-
-def _pick_project(row, profile):
-    """按 JD 关键词选主打项目；都不命中时用默认项目，并按顺序轮换保证分布。"""
-    global _project_cursor
-    jd = str(row.get('jd', '')).lower()   # 只看 JD，标题里带自己项目名会造成自匹配
-    specs = _PROJECTS.get(profile['track'], [])
-    if not specs:
-        return None, 0
-
-    scored = []
-    for i, p in enumerate(specs):
-        hits = sum(1 for k in p['keys'] if k in jd)
-        scored.append((hits, i, p))
-
-    best_hits = max((s[0] for s in scored), default=0)
-    if best_hits > 0:
-        # 命中最多者优先；并列时轮换，避免永远只选第一个
-        tied = [s for s in scored if s[0] == best_hits]
-        cur = _project_cursor.get(profile['track'], 0)
-        chosen = tied[cur % len(tied)]
-        _project_cursor[profile['track']] = cur + 1
-        return chosen[2], best_hits
-
-    # 无命中：用默认项目（找得到就用，找不到退回第一个）
-    default_name = DEFAULT_PROJECT.get(profile['track'], specs[0]['name'])
-    for p in specs:
-        if p['name'] == default_name:
-            return p, 0
-    return specs[0], 0
+# ============================================================
+# 以下代码已停用，保留供参考 —— 话术生成已从「按项目匹配」
+# 改为「按能力清单匹配」（见 _CAPABILITIES / pick_capabilities / cap_say）。
+# 此处没有调用点，保留是为了避免以后重新推导这段设计。
+# ============================================================
+# # 关键词全都没命中时，默认讲哪个项目。
+# # QA 用金融终端（测试岗硬通货：无人值守 + 异常处理 + 打包交付）；
+# # AI 用智能求职助手（技术链路最全：采集 + 匹配算法 + 大模型 API + 前端面板）。
+# DEFAULT_PROJECT = {
+#     'ai': '智能求职助手',
+#     'qa': '金融终端自动化导出系统',
+# }
+#
+#
+# def _pick_project(row, profile):
+#     """按 JD 关键词选主打项目；都不命中时用默认项目，并按顺序轮换保证分布。"""
+#     global _project_cursor
+#     jd = str(row.get('jd', '')).lower()   # 只看 JD，标题里带自己项目名会造成自匹配
+#     specs = _PROJECTS.get(profile['track'], [])
+#     if not specs:
+#         return None, 0
+#
+#     scored = []
+#     for i, p in enumerate(specs):
+#         hits = sum(1 for k in p['keys'] if k in jd)
+#         scored.append((hits, i, p))
+#
+#     best_hits = max((s[0] for s in scored), default=0)
+#     if best_hits > 0:
+#         # 命中最多者优先；并列时轮换，避免永远只选第一个
+#         tied = [s for s in scored if s[0] == best_hits]
+#         cur = _project_cursor.get(profile['track'], 0)
+#         chosen = tied[cur % len(tied)]
+#         _project_cursor[profile['track']] = cur + 1
+#         return chosen[2], best_hits
+#
+#     # 无命中：用默认项目（找得到就用，找不到退回第一个）
+#     default_name = DEFAULT_PROJECT.get(profile['track'], specs[0]['name'])
+#     for p in specs:
+#         if p['name'] == default_name:
+#             return p, 0
+#     return specs[0], 0
 
 
 # ============================================================
@@ -1539,7 +1549,6 @@ def main():
 
     # 重置轮换游标，保证每次运行的起点一致（否则多次运行会从上次的位置接着轮）
     _cap_cursor.clear()
-    _project_cursor.clear()
     _opening_seq.clear()
 
     # 分类
