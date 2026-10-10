@@ -675,22 +675,46 @@ _CLOSING = '期待有机会进一步沟通。'
 
 
 def _trim_to_sentence(text, budget):
-    """把 text 截到不超过 budget 字，且尽量停在一个完整句末。
+    """把 text 截到不超过 budget 字，且停在读得通的收尾处。
 
-    注意：补句号时是多出一个字符的，所以补之前要先腾出位置，
-    否则会稳定超出 budget 一个字（曾实测所有超长都刚好是 111）。
+    三个坑（都实测踩过）：
+      · 补句号会多占一个字符，补之前要先腾位置，否则稳定超出上限 1 个字。
+      · 截断点可能落在英文单词中间，出现过「基于 LangChain 和 Chrom。」
+        —— Chroma 被切成 Chrom，像打错字。
+      · 只退到「词边界」还不够：退过头会剩下「…答案，基于。」这种悬空收尾。
+        所以**优先在中文标点处收尾**（「…答案。」读着完整），
+        中文标点离得太远时，才退到词边界。
     """
     if len(text) <= budget:
         return text
 
     cut = text[:budget]
+    # ① 优先：句末标点
     for ch in ['。', '！', '？', '；']:
         idx = cut.rfind(ch)
         if idx >= budget * 0.5:
-            return cut[:idx + 1]          # 已经是句末，直接用
+            return cut[:idx + 1]
+    # ② 次选：中文逗号/顿号（补句号即可成句）
+    for ch in ['，', '、']:
+        idx = cut.rfind(ch)
+        if idx >= budget * 0.6:
+            return cut[:idx] + '。'
 
-    # 没有可用句末：去掉尾部标点后补一个句号，注意别越界
-    core = cut[:budget - 1].rstrip('，,、；; ')
+    # ③ 兜底：退到词边界（避免切碎英文单词），再补句号
+    core = cut[:budget - 1]
+    # 截断点前的空白也一并去掉，否则会生成「it 。」这种带空格再接句号的情况
+    core = core.rstrip(' \t')
+    m = re.search(r'[A-Za-z0-9][A-Za-z0-9.+\-_/ ]*$', core)
+    if m and m.start() > 0:
+        core = core[:m.start()]
+    # 退完之后如果中文标点还在附近，用它收尾更自然
+    for ch in ['，', '、']:
+        idx = core.rfind(ch)
+        if idx >= len(core) * 0.6:
+            return core[:idx] + '。'
+    core = core.rstrip(' \t，,、；;:：')
+    if not core:
+        core = cut[:budget - 1].rstrip(' \t，,、；;:：')
     return core + '。'
 
 
@@ -924,6 +948,18 @@ _opening_lock = None
 #     → 对方一眼知道这东西干什么用
 _CAPABILITIES = [
     # ---------- 硬实力 ----------
+    # 说明：这一条是本轮新增的。原先能力清单里没有「智能体/工作流」这一类，
+    # 导致投「AI 智能体应用工程师」这类岗位时无能力可选，
+    # 只能退而挑「大模型 API 集成」「自动化」，跟岗位主线对不上
+    # （实测精创仪器那份 JD 主线就是智能体 + 工作流，话术却只讲了大模型和采集）。
+    {'level': 'strong', 'name': '智能体与工作流搭建',
+     'says': [
+         '把大模型和业务系统串起来做成自动化流程，多个步骤能自己往下走，不用人一步步操作',
+         '搭过带工具调用的智能体：让它自己取数、判断、再调用接口完成后续动作',
+         '设计过端到端的工作流，把采集、处理、生成、输出几步串成一条自动链路',
+     ],
+     'keys': ['agent', '智能体', 'mcp', '工作流', 'workflow', '编排', '工具调用',
+              'function calling', '多轮', 'coze', 'dify', 'langgraph', 'n8n', 'agent开发']},
     {'level': 'strong', 'name': '大模型 API 集成',
      'says': [
          '把大模型接进业务流程，让它自动生成和整理内容，替掉原来靠人重复写的部分',
@@ -1019,33 +1055,43 @@ def cap_say(cap):
 
 
 def pick_capabilities(row, limit=3):
-    """按 JD 挑能力，返回 (选中列表, 命中的关键词集合)。
+    """按 JD + 标题挑能力，返回 (选中列表, 命中的关键词集合)。
 
     排序规则（按优先级从高到低）：
-      1. strong 且命中 JD  —— 硬实力且对口，最优先
-      2. weak 且命中 JD    —— 岗位明确要求，可以讲
-      3. strong 未命中     —— 硬实力但不对口，兜底用
-      4. weak 未命中       —— 不讲
+      1. strong 且命中标题   —— 岗位主线就是它，最该讲
+      2. strong 且命中 JD    —— 硬实力且对口
+      3. weak 且命中 JD      —— 岗位明确要求，可以讲
+      4. strong 未命中       —— 硬实力但不对口，兜底用
+      5. weak 未命中         —— 不讲
 
-    注意：不能把 strong 当权重加在命中数上——那样 weak 命中 3 个词
-    会压过 strong 命中 2 个词，结果硬实力被基础能力挤掉（实测踩过）。
-    必须让 strong 作为独立的优先分组。
+    两个踩过的坑：
+      · 不能把 strong 当权重加在命中数上——那样 weak 命中 3 个词会压过
+        strong 命中 2 个词，硬实力被挤掉（实测 AI 岗选出来全是 weak）。
+      · 「命中标题」必须单独排在「命中 JD」前面。JD 里往往罗列一堆加分项，
+        而标题才是岗位主线。实测：投「AI智能体应用工程师」时，JD 里既有
+        "智能体"也有"自动化""大模型"，不区分标题就会挑到后面几个，
+        话术讲的和岗位主线对不上。
     """
-    blob = (str(row.get('jd', '')) + ' ' + str(row.get('title', ''))).lower()
+    jd = str(row.get('jd', '')).lower()
+    title = str(row.get('title', '')).lower()
 
-    strong_hit, weak_hit, strong_miss = [], [], []
+    strong_title, strong_body, weak_body, strong_miss = [], [], [], []
     for cap in _CAPABILITIES:
-        hits = [k for k in cap['keys'] if k in blob]
-        bucket = (strong_hit if cap['level'] == 'strong' else weak_hit) if hits else None
-        if bucket is not None:
-            bucket.append((len(hits), cap, hits))
+        t_hits = [k for k in cap['keys'] if k in title]
+        j_hits = [k for k in cap['keys'] if k in jd]
+        if t_hits:
+            (strong_title if cap['level'] == 'strong' else weak_body).append(
+                (len(t_hits) * 10 + len(j_hits), cap, t_hits + j_hits))
+        elif j_hits:
+            (strong_body if cap['level'] == 'strong' else weak_body).append(
+                (len(j_hits), cap, j_hits))
         elif cap['level'] == 'strong':
             strong_miss.append((0, cap, []))
 
-    for b in (strong_hit, weak_hit, strong_miss):
+    for b in (strong_title, strong_body, weak_body, strong_miss):
         b.sort(key=lambda x: -x[0])
 
-    ordered = strong_hit + weak_hit + strong_miss
+    ordered = strong_title + strong_body + weak_body + strong_miss
     chosen = ordered[:limit]
     return [c[1] for c in chosen], {k for c in chosen for k in c[2]}
 
