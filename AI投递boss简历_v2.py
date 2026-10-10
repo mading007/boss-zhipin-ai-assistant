@@ -72,7 +72,10 @@ PROFILE_AI = {
                          # 运营类不是不能干，但跟开发技能不对口，降权即可
                          '运营', '客服', '销售', '市场'],
     # 这些岗位即使 JD 里堆满 AI 关键词也不投——技能完全不匹配，纯浪费
-    'exclude_title_pattern': r'讲师|培训师|咨询师|课程|营销|渠道|代理|推广|主播|带货|地推',
+    # 注意：只匹配「标题」。「京东/京东科技」里含"咨询"属误伤，故用词边界更严的词。
+    'exclude_title_pattern': r'讲师|培训师|课程|营销|渠道|代理|推广|主播|带货|地推',
+    # 标题再排除一层：PHP 后端、算法研究、机器视觉 —— 核心技术栈对不上
+    'exclude_title_extra': r'\bPHP\b|算法工程师|机器视觉|计算机视觉|深度学习|模型训练',
     'personal_summary': """
 我是马丁，2026届电子信息工程本科毕业生，可立即到岗，期望城市北京。
 
@@ -119,13 +122,18 @@ PROFILE_QA = {
         r'算法测试|外场测试|EMC|结构测试|可靠性测试|'
         r'智驾|行车测试|辅助驾驶|自动驾驶'
     ),
+    # 标题再排除一层：硬件/嵌入式/车载/算法研究 —— 核心技术栈对不上
+    'exclude_title_extra': (
+        r'嵌入式|单片机|硬件|射频|天线|PCB|BSP|'
+        r'算法工程师|机器视觉|计算机视觉|深度学习|模型训练'
+    ),
     'personal_summary': """
 我是马丁，2026届电子信息工程本科毕业生，可立即到岗，期望城市北京。
 
 核心项目：
-1. 金融终端自动化导出系统（6月）：独立设计并实现无人值守的桌面自动化程序。针对交易客户端
-   界面复杂、每日导出覆盖旧文件、人工重复操作繁琐的痛点，通过图像识别定位界面元素、
-   模拟键鼠操作，"图像识别 + 模拟操作"实现定时任务，并主动处理了弹窗等异常分支；
+1. 金融终端自动化导出系统（6月）：独立设计并实现无人值守的桌面自动化程序。
+   针对交易客户端界面复杂、每日导出覆盖旧文件、人工重复操作繁琐的痛点，
+   通过图像识别定位界面元素、模拟键鼠操作，实现定时任务；
    在 Excel 中自动加时间戳归档解决覆盖问题，再开发合并模块按日期汇总当天数据，
    最后邮件自动发送；打包成 exe，非技术同事双击即用，上线后每天节省 30 分钟人工操作；
 2. 智能求职助手（9月）：基于 Chrome DevTools Protocol 控制浏览器，实现稳定的数据采集
@@ -255,6 +263,69 @@ def _load_recent(pattern):
     return records, used
 
 
+# BOSS 详情页的 JD 正文尾部会混入页面底部的公司资质信息，例如：
+#   「…认证资质 人力资源服务许可证 劳务派遣经营许可证 营业执照 …」
+# 这段文字对所有公司都一样，留着会污染关键词匹配与语义打分
+# （实测导致「劳务派遣」这类规则误命中所有岗位）。
+_PAGE_FOOTER = re.compile(
+    r'认证资质|人力资源服务许可证|劳务派遣经营许可证|朝阳区人社局监督电话'
+)
+
+
+def _strip_page_footer(jd):
+    """切掉 JD 尾部的页面 footer 污染。"""
+    if not jd:
+        return jd
+    m = _PAGE_FOOTER.search(jd)
+    return jd[:m.start()].rstrip() if m else jd
+
+
+# ============================================================
+# 全局硬排除：命中即不投，不参与打分
+# ============================================================
+# 设计原则：只在有「硬证据」时排除，不因为「提到了某个语言」就排除。
+# 曾经想按「不会的语言」过滤，但实测会误杀大量岗位——
+# 例：FunPlus 写「熟悉 Python/Go/Java 中至少一种」，你会 Python 就够；
+#     纬致写「至少掌握一种：Python/Java」，同理。
+# 所以只在「核心技术栈明显不对口」时才剔。
+_GLOBAL_EXCLUDE = {
+    # 经验硬门槛：5 年以上。你刚毕业，这个门槛是真实存在的墙。
+    # 注：3 年以上不硬剔（有些岗写 3 年但接受优秀应届），只靠打分降权。
+    '经验要求 5 年以上': r'5\s*年(?:及)?以上|五年以上',
+    # JD 明说是外包/驻场岗（本人明确不接受外包）
+    '明说外包/驻场': r'驻场|外包岗|外包公司|第三方签约|派遣制|此为外包',
+    # 外包/人力派遣公司。只列确实的派遣商；
+    # 慧博云通、京北方、纬致等正规公司不在此列（曾误伤，已移出）
+    '外包/派遣公司': (
+        r'外企德科|柯莱特|中软国际|软通动力|法本信息|博彦科技|'
+        r'文思海辉|中电金信|人瑞人才|上海佩航|联合永道|联想利泰|联想弘扬'
+    ),
+    # PHP 专属框架（出现即说明必须会 PHP，这是硬证据，不是语言列表）
+    'PHP 专属框架': r'Laravel|Lumen|Yaf|ThinkPHP|Symfony',
+}
+
+
+def _exclude_reason(row, profile):
+    """返回该岗位被硬排除的原因列表；空列表表示保留。"""
+    title = str(row.get('title', ''))
+    company = str(row.get('boss_name', '') or row.get('company', ''))
+    jd = str(row.get('jd', ''))
+
+    why = []
+    # 标题层：讲师/营销/硬件/算法等方向不符
+    for key, label in (('exclude_title_pattern', '标题-方向不符'),
+                       ('exclude_title_extra', '标题-技术栈不符')):
+        pat = profile.get(key)
+        if pat and re.search(pat, title, re.I):
+            why.append(label)
+    # 全局层
+    for name, pat in _GLOBAL_EXCLUDE.items():
+        target = company if name == '外包/派遣公司' else (title + ' ' + jd)
+        if re.search(pat, target, re.I):
+            why.append(name)
+    return why
+
+
 def build_dataframe():
     print("📂 正在加载最近的抓取数据…")
     jobs, job_files = _load_recent('boss_jobs_*.json')
@@ -299,7 +370,7 @@ def build_dataframe():
             jd_hit += 1
         row = dict(j)
         row['job_key'] = key
-        row['jd'] = jd
+        row['jd'] = _strip_page_footer(jd)
         row['tech_list'] = det.get('skill_tags', []) or []
         rows.append(row)
 
@@ -1604,18 +1675,20 @@ def main():
 
         print(f"\n【{label}】{len(sub)} 个岗位，按匹配分排序…")
 
-        # 标题硬排除（硬件/车载/算法测试等不匹配方向）
-        ex_pat = profile.get('exclude_title_pattern')
-        if ex_pat:
-            hit = sub['title'].astype(str).str.contains(ex_pat, regex=True, na=False)
-            if hit.any():
-                dropped = sub.loc[hit, 'title'].tolist()
-                print(f"   已按标题剔除 {len(dropped)} 个不匹配方向的岗位：")
-                for t in dropped[:8]:
-                    print(f"      ✂ {str(t)[:40]}")
-                if len(dropped) > 8:
-                    print(f"      … 另有 {len(dropped) - 8} 个")
-                sub = sub[~hit]
+        # 硬排除：方向不符 / 核心技术栈不符 / 外包 / 5 年经验门槛
+        reasons = sub.apply(lambda r: _exclude_reason(r, profile), axis=1)
+        hit = reasons.str.len() > 0
+        if hit.any():
+            print(f"   已剔除 {int(hit.sum())} 个不符合的岗位：")
+            shown = 0
+            for idx, why in reasons[hit].items():
+                if shown >= 10:
+                    print(f"      … 另有 {int(hit.sum()) - shown} 个")
+                    break
+                print(f"      ✂ {str(sub.loc[idx, 'title'])[:34]:36s} "
+                      f"| {str(sub.loc[idx, 'boss_name'])[:16]:16s} | {'、'.join(why)}")
+                shown += 1
+            sub = sub[~hit]
 
         # 过滤硕士硬门槛（学历分直接归零的，没意义）
         sub = sub[~sub['tags'].astype(str).str.contains('硕士', na=False)]
