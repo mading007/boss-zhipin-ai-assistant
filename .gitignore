@@ -11,6 +11,13 @@ apply_helper*.html
 _run_log*.txt
 *.log
 
+# 临时排查脚本与输出（下划线开头的一律是临时文件，不该进仓库）
+# 曾经把 _commit_msg.txt 误提交过一次，加这条防止再犯
+_*.py
+_*.txt
+_*.json
+_*.png
+
 # Python
 __pycache__/
 *.py[cod]

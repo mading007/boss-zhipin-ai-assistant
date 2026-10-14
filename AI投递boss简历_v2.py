@@ -293,7 +293,18 @@ _GLOBAL_EXCLUDE = {
     # 注：3 年以上不硬剔（有些岗写 3 年但接受优秀应届），只靠打分降权。
     '经验要求 5 年以上': r'5\s*年(?:及)?以上|五年以上',
     # JD 明说是外包/驻场岗（本人明确不接受外包）
-    '明说外包/驻场': r'驻场|外包岗|外包公司|第三方签约|派遣制|此为外包',
+    # 注意：`人力外包` 是实测补上的——广志信息那条 JD 中间写着
+    # 「用工时长长期，人力外包」，但标题和开头都没有"外包"字样，
+    # 原来只匹配"驻场/外包岗"会整条漏掉。
+    '明说外包/驻场': (
+        r'驻场|外包岗|外包公司|第三方签约|派遣制|此为外包|'
+        r'人力外包|外包用工|外包性质|岗位外包|劳务外包'
+    ),
+    # 届别：明确只要 27 届的岗位，本人（2026-06 毕业）不符合。
+    # 实测面板里 16 条命中，全部写着「2027届统招本科」「毕业时间：2027年」
+    # 「2026年9月-2027年8月毕业的27届应届生」这类硬条件，投了是纯浪费。
+    # 例外：同时写「26 27届」「26届」这类兼容写法的保留（见 _NEXT_COHORT_ALLOW）。
+    '只要 27 届': r'27\s*届|2027\s*届|毕业时间：?\s*2027|2027\s*年毕业',
     # 外包/人力派遣公司。只列确实的派遣商；
     # 慧博云通、京北方、纬致等正规公司不在此列（曾误伤，已移出）
     '外包/派遣公司': (
@@ -305,11 +316,18 @@ _GLOBAL_EXCLUDE = {
 }
 
 
+# 兼容写法：同时写「26 27届」「26届」的岗位，本人也能投，不做排除
+_NEXT_COHORT_ALLOW = re.compile(
+    r'26\s*[-/、，,]?\s*27\s*届|26届|2026\s*届|应届及往届|不限届别'
+)
+
+
 def _exclude_reason(row, profile):
     """返回该岗位被硬排除的原因列表；空列表表示保留。"""
     title = str(row.get('title', ''))
     company = str(row.get('boss_name', '') or row.get('company', ''))
     jd = str(row.get('jd', ''))
+    blob = title + ' ' + jd
 
     why = []
     # 标题层：讲师/营销/硬件/算法等方向不符
@@ -320,9 +338,13 @@ def _exclude_reason(row, profile):
             why.append(label)
     # 全局层
     for name, pat in _GLOBAL_EXCLUDE.items():
-        target = company if name == '外包/派遣公司' else (title + ' ' + jd)
-        if re.search(pat, target, re.I):
-            why.append(name)
+        target = company if name == '外包/派遣公司' else blob
+        if not re.search(pat, target, re.I):
+            continue
+        # 只要 27 届的岗位，如果同时写了 26 届/不限届别，则保留
+        if name == '只要 27 届' and _NEXT_COHORT_ALLOW.search(blob):
+            continue
+        why.append(name)
     return why
 
 
