@@ -117,7 +117,10 @@ PROFILE_QA = {
                          '结构测试', '可靠性测试', '化学', '材料'],
     # 标题命中这些词直接剔除（不做扣分，避免高分岗又冒回来）
     # 方向：硬件/车载/嵌入式 类的测试岗，跟电子信息软件方向不匹配
+    # 另含讲师/培训/营销类 —— 实测「测试开发讲师」曾漏网，
+    # 原因是这条规则只有 AI 画像里有、QA 画像里没有，两条赛道要各自写全。
     'exclude_title_pattern': (
+        r'讲师|培训师|课程|营销|渠道|代理|推广|主播|带货|地推|'
         r'车载|整车|电机|电池|BMS|嵌入式|单片机|硬件测试|射频|天线|'
         r'算法测试|外场测试|EMC|结构测试|可靠性测试|'
         r'智驾|行车测试|辅助驾驶|自动驾驶'
@@ -300,6 +303,12 @@ _GLOBAL_EXCLUDE = {
         r'驻场|外派|外包岗|外包公司|第三方签约|派遣制|此为外包|'
         r'人力外包|外包用工|外包性质|岗位外包|劳务外包'
     ),
+    # 裸词「外包」：实测漏网两条 ——
+    #   易车「智能体研发工程师-外包」（只有标题有，JD 正文没有）
+    #   集联软件「外包能源国企 智能体开发工程师」
+    # 标题里出现「外包」基本可以直接判死；JD 里出现则要排除
+    # 「非外包」「不外包」「免外包」「无外包」这类否定说法（见 _is_negated_outsource）。
+    '标题含外包': r'外包',
     # 院校门槛：本人毕业于中国民航飞行学院（普通本科，不是 985/211/双一流）。
     # 注意两点：
     #  · 不能只写 `985|211`——会误匹配岗位编号（J211）、薪资、电话号。
@@ -335,6 +344,22 @@ _NEXT_COHORT_ALLOW = re.compile(
 # 985/211 后面跟着「优先」的，是加分项而不是门槛，不做排除
 _DEGREE_PREF = re.compile(r'[^。；;\n]{0,20}优先')
 
+# 否定说法：「非外包」「不外派」「无需驻场」「不要求外派」——这些不该被排除
+_OUTSOURCE_NEG = re.compile(r'(?:非|不|无需|不需要|免|没有|无)\s*.{0,4}(?:外包|外派|驻场)')
+
+
+def _all_outsource_mentions_negated(blob):
+    """外包/外派/驻场的提法是否全部带否定词（即这个岗位其实不外包）。"""
+    pos = list(re.finditer(r'外包|外派|驻场', blob))
+    if not pos:
+        return False
+    neg_spans = [m.span() for m in _OUTSOURCE_NEG.finditer(blob)]
+    for m in pos:
+        # 该次提法是否落在任一否定结构里
+        if not any(s <= m.start() and m.end() <= e + 6 for s, e in neg_spans):
+            return False
+    return True
+
 
 def _degree_is_pref(blob, pat):
     """985/211 的提法若是「优先」而非硬要求，返回 True（即不该排除）。"""
@@ -361,7 +386,12 @@ def _exclude_reason(row, profile):
             why.append(label)
     # 全局层
     for name, pat in _GLOBAL_EXCLUDE.items():
-        target = company if name == '外包/派遣公司' else blob
+        if name == '外包/派遣公司':
+            target = company
+        elif name == '标题含外包':
+            target = title          # 裸词「外包」只在标题里匹配，避免误伤 JD 中的普通表述
+        else:
+            target = blob
         if not re.search(pat, target, re.I):
             continue
         # 只要 27 届的岗位，如果同时写了 26 届/不限届别，则保留
@@ -369,6 +399,10 @@ def _exclude_reason(row, profile):
             continue
         # 985/211 写「优先」的，是加分项，保留
         if name == '院校门槛 985/211' and _degree_is_pref(blob, pat):
+            continue
+        # 外包/外派类的提法若全是「非外包」「不外派」这类否定，
+        # 说明岗位本身不是外包，保留（实测误伤过一条）
+        if name in ('明说外包/驻场', '标题含外包') and _all_outsource_mentions_negated(target):
             continue
         why.append(name)
     return why
@@ -835,6 +869,13 @@ def _ensure_closing(text, limit=MAX_GREETING_LEN):
     t = re.sub(r'。{2,}', '。', t)
     t = re.sub(r'[，,；;]\s*。', '。', t)     # 删完留下空逗号
     t = re.sub(r'。\s*[，,；;]', '。', t)
+    # 模型偶发把两句粘在一起，缺了标点。实测出现过
+    # 「…让机器承担重复的文字对智能体工作流搭建有实际经验。」
+    # 即「…重复的文字工作。」和「对…有实际经验。」拼成一句且丢了"工作"。
+    # 注意只修「文字对」这一种：曾把词表放宽到 能力/工具/经验 等，
+    # 结果把本来通顺的「能力对贵司岗位很匹配」也拆成了病句（误伤）。
+    # 用负向断言避开「文字对齐」这种正常词。
+    t = re.sub(r'文字(对(?!齐))', r'文字。\1', t)
     # 删完只剩个孤立动词的，比如「…程序，遇到，不用人盯着」
     t = re.sub(r'(遇到|碰到|出现|发生|处理|支持)[，,]\s*', '', t)
     t = re.sub(r'[，,]\s*[，,]', '，', t)
