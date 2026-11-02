@@ -6,6 +6,8 @@
 # 抓取到岗位数据 / 投递清单（含个人求职信息，不公开）
 apply_ready_list_*.csv
 apply_helper*.html
+# 已投递记录（面板「导出已投递」的产出，等于你投过哪些公司）
+applied_jobs.csv
 
 # 运行日志
 _run_log*.txt

@@ -35,6 +35,9 @@ try:
 except Exception:
     pass
 
+import csv
+import io
+
 import pandas as pd
 import requests
 from sklearn.feature_extraction.text import TfidfVectorizer
@@ -431,7 +434,15 @@ def build_dataframe():
         # 同 key 保留 JD 更长的那份（信息更全）
         prev = detail_map.get(key)
         if prev is None or len(jd) > len(prev.get('jd', '')):
-            detail_map[key] = {'jd': jd, 'skill_tags': skills}
+            # 注意：boss_active_status 必须一起带过来。
+            # 列表页只给「在线」或空，只有详情页才有「刚刚活跃 / 3日内活跃 /
+            # 本月活跃」这些细粒度值；早先只存 jd+skill_tags，
+            # 结果 HR 活跃度永远是"在线/空"两档，判断不出谁已经很久没上线。
+            detail_map[key] = {
+                'jd': jd,
+                'skill_tags': skills,
+                'boss_active_status': (d.get('boss_active_status') or '').strip(),
+            }
 
     # --- 岗位去重：job_id 为键，保留最新 ---
     merged = {}
@@ -454,6 +465,13 @@ def build_dataframe():
         row['job_key'] = key
         row['jd'] = _strip_page_footer(jd)
         row['tech_list'] = det.get('skill_tags', []) or []
+        # HR 活跃状态优先取详情页的。
+        # 列表页只给「在线」或空，详情页才有「刚刚活跃 / 3日内活跃 /
+        # 本周活跃 / 本月活跃 / 2周内活跃」这些细粒度值。
+        # 不覆盖的话，面板里永远只有"在线"和空两种状态，分辨不出
+        # 谁其实已经一两个月没上线了（实测 49 次投递里 35% 从未被打开）。
+        if det.get('boss_active_status'):
+            row['boss_active_status'] = det['boss_active_status']
         rows.append(row)
 
     df = pd.DataFrame(rows)
@@ -579,6 +597,17 @@ def company_credibility(name):
 # BOSS 机制：HR 不在线时招呼语不会推送到他手机，会躺在后台等他上线。
 # 所以「在线」的岗位才值得优先投。
 def hr_activity(status):
+    """把 BOSS 的 HR 活跃状态转成 (加分, 面板显示标签)。
+
+    实测 BOSS 会返回这些值：
+        在线 / 刚刚活跃 / 今日活跃 / 3日内活跃 / 本周活跃 /
+        2周内活跃 / 本月活跃 / N小时前在线 / N天前在线 / 空
+
+    早期只处理了「在线」「刚刚活跃」「N分钟/小时/天前」，
+    其余（今日活跃、3日内活跃、本周活跃、本月活跃、2周内活跃）
+    全部落到兜底返回 0 分，标签又原样带着，结果面板里看起来
+    只有「在线」和空两种状态，分辨不出谁其实已经一个月没上线了。
+    """
     s = str(status or '').strip()
     if not s:
         return 0.0, ''
@@ -600,7 +629,63 @@ def hr_activity(status):
         return 5.0, '刚刚活跃'
     if '当前在线' in s or s == '在线' or '在线' in s:
         return 5.0, '在线'
+    if '今日活跃' in s:
+        return 4.0, '今日活跃'
+    if '3日内' in s or '三日内' in s:
+        return 2.0, '3日内'
+    if '本周' in s:
+        return 0.5, '本周'
+    if '2周内' in s:
+        return -3.0, '2周内'
+    if '本月' in s or '一个月' in s:
+        return -3.0, '本月'
+    # 「2月内活跃」「3月内活跃」这种更久的形式（实测出现过 2月内活跃）
+    if '月内' in s:
+        return -4.0, '多月未上线'
     return 0.0, s[:8]
+
+
+# 判定「HR 太不活跃，投了也大概率白投」的标签集合。
+# 依据：实测 49 份投递里 17 份（35%）未被打开，主要集中在这类状态。
+_HR_STALE_TAGS = {'本月', '2周内', '多月未上线', '3天前', '4天前', '5天前', '6天前', '7天前'}
+
+
+def is_hr_stale(active_tag):
+    """HR 活跃度是否太差（面板里默认不展示）。"""
+    t = str(active_tag or '').strip()
+    if t in _HR_STALE_TAGS:
+        return True
+    # 「N天前」里 N>=3 视为陈旧
+    m = re.match(r'^(\d+)天前$', t)
+    return bool(m) and int(m.group(1)) >= 3
+
+
+# ============================================================
+# 已投递记录：避免重复投同一岗位/同一 HR
+# ============================================================
+# 面板里点「一键投递」会把岗位记在浏览器 localStorage（appliedJobs_ai/qa），
+# 但脚本读不到浏览器存储。所以面板提供「导出已投递」按钮，
+# 导出成 applied_jobs.csv 放到本目录，下次生成面板时自动跳过这些岗位。
+APPLIED_CSV = os.path.join(SCRIPT_DIR, 'applied_jobs.csv')
+
+
+def _load_applied():
+    """读已投递记录，返回 (job_link 集合, job_id 集合)。"""
+    links, ids = set(), set()
+    if not os.path.exists(APPLIED_CSV):
+        return links, ids
+    try:
+        with io.open(APPLIED_CSV, encoding='utf-8-sig', newline='') as f:
+            for row in csv.DictReader(f):
+                link = (row.get('job_link') or '').strip()
+                jid = (row.get('job_id') or '').strip()
+                if link:
+                    links.add(link.split('?')[0])
+                if jid:
+                    ids.add(jid)
+    except Exception as e:
+        print(f"   ⚠️ 读取 {os.path.basename(APPLIED_CSV)} 失败：{e}")
+    return links, ids
 
 
 def score_row(row, profile):
@@ -1481,6 +1566,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     .btn-copy { background: #3498db; color: white; border: none; padding: 5px 10px; border-radius: 4px; cursor: pointer; margin-right: 3px; font-size:13px;}
     .btn-done { background: #28a745; color: white; border: none; padding: 5px 10px; border-radius: 4px; cursor: pointer; margin-right: 3px; font-size:13px;}
     .btn-ignore { background: #ff9800; color: white; border: none; padding: 5px 10px; border-radius: 4px; cursor: pointer; font-size:13px;}
+    .btn-export { background:#6c5ce7; color:#fff; border:none; padding:6px 12px; border-radius:6px; cursor:pointer; font-size:13px;}
     .toast { position: fixed; bottom: 20px; right: 20px; background: #2ecc71; color: white; padding: 10px 20px; border-radius: 6px; display: none; z-index: 999; }
     .greeting-preview { font-size: 12px; color: #777; max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: inline-block; vertical-align:middle;}
 
@@ -1513,6 +1599,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     <div class="btn-group">
         <button id="btnShowApplied" class="btn-applied">📋 已投递</button>
         <button id="btnShowIgnored" class="btn-ignored">📋 已忽略</button>
+        <button id="btnExportApplied" class="btn-export">⬇ 导出已投递</button>
         <button id="btnResetApplied" class="btn-reset">🔄 重置</button>
     </div>
 </div>
@@ -1585,9 +1672,34 @@ __ROWS__
         else                   { box.classList.add('danger'); hint.textContent = '⚠️ 已超过安全阈值，继续高频容易触发风控'; }
     }
 
+    // 已投递记录同时存 ID 和链接/公司/职位，供「导出已投递」生成 applied_jobs.csv。
+    // 早期版本只存 jobId 字符串，导出时拿不到链接，所以这里做了兼容：
+    // 旧记录是字符串，新记录是对象。
+    function appliedIds() {
+        return getApplied().map(function(x) { return (typeof x === 'string') ? x : (x && x.id); });
+    }
+    function recordOf(jobId) {
+        var list = getApplied();
+        for (var i = 0; i < list.length; i++) {
+            var it = list[i];
+            if ((typeof it === 'string' ? it : it && it.id) === jobId) return it;
+        }
+        return null;
+    }
+
     function markApplied(jobId) {
         var list = getApplied();
-        if (list.indexOf(jobId) === -1) { list.push(jobId); setApplied(list); }
+        if (appliedIds().indexOf(jobId) === -1) {
+            var rowEl = document.querySelector('tr[data-job-id="' + CSS.escape(jobId) + '"]');
+            list.push({
+                id: jobId,
+                link: rowEl ? (rowEl.getAttribute('data-link') || '') : '',
+                company: rowEl ? (rowEl.getAttribute('data-company') || '') : '',
+                title: rowEl ? (rowEl.getAttribute('data-title') || '') : '',
+                date: today()
+            });
+            setApplied(list);
+        }
         var row = document.querySelector('tr[data-job-id="' + CSS.escape(jobId) + '"]');
         if (row) {
             row.classList.add('row-done');
@@ -1596,6 +1708,41 @@ __ROWS__
             var i = row.querySelector('.btn-ignore');
             if (i) { i.disabled = true; i.textContent = '已忽略'; }
         }
+    }
+
+    // 导出已投递为 CSV，放到脚本目录下，下次生成面板时自动跳过这些岗位
+    function exportApplied() {
+        var list = getApplied();
+        if (!list.length) { toast('还没有投递记录'); return; }
+        var esc = function(v) {
+            v = String(v == null ? '' : v);
+            // 注意：这里不能用正则字符类里带换行转义的写法。
+            // 本文件是 Python 普通字符串，反斜杠加 n 会被 Python 先解释成真实换行，
+            // 塞进 JS 后正则字面量就跨行了，整个面板脚本都会语法报错
+            // （连这一行注释都会被换行截断，后半截变成代码）。
+            // 所以统一改用 fromCharCode 生成换行符，彻底避开转义。
+            var nl = String.fromCharCode(10), cr = String.fromCharCode(13);
+            var need = v.indexOf('"') !== -1 || v.indexOf(',') !== -1 ||
+                       v.indexOf(nl) !== -1 || v.indexOf(cr) !== -1;
+            return need ? '"' + v.split('"').join('""') + '"' : v;
+        };
+        var lines = ['job_id,job_link,company,title,date'];
+        list.forEach(function(it) {
+            if (typeof it === 'string') { lines.push([esc(it), '', '', '', ''].join(',')); return; }
+            lines.push([esc(it.id), esc(it.link), esc(it.company), esc(it.title), esc(it.date)].join(','));
+        });
+        // 加 BOM 让 Excel 打开中文不乱码。
+        // 这里一律用 fromCharCode 生成控制字符——本文件是 Python 普通字符串，
+        // 任何反斜杠转义都会先被 Python 处理掉，导致 JS 字符串被真实换行截断。
+        var BOM = String.fromCharCode(0xFEFF);
+        var EOL = String.fromCharCode(13, 10);
+        var blob = new Blob([BOM + lines.join(EOL)], {type: 'text/csv;charset=utf-8'});
+        var a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = 'applied_jobs.csv';
+        document.body.appendChild(a); a.click(); document.body.removeChild(a);
+        setTimeout(function() { URL.revokeObjectURL(a.href); }, 3000);
+        toast('✅ 已导出 ' + list.length + ' 条，放到脚本目录覆盖旧文件即可');
     }
 
     function markIgnored(jobId) {
@@ -1643,13 +1790,19 @@ __ROWS__
         if (!list.length) { c.innerHTML = '<p>暂无记录。</p>'; }
         else {
             var h = '<table><thead><tr><th>公司</th><th>职位</th><th>薪资</th><th>地区</th></tr></thead><tbody>';
-            list.forEach(function(id) {
+            list.forEach(function(item) {
+                // 兼容两种记录：纯 jobId 字符串 / {id, link, company, ...} 对象
+                var id = (typeof item === 'string') ? item : (item && item.id);
                 var row = document.querySelector('tr[data-job-id="' + CSS.escape(id) + '"]');
                 if (row) {
                     h += '<tr><td>' + (row.getAttribute('data-company')||'') + '</td><td>' +
                          (row.getAttribute('data-title')||'') + '</td><td>' +
                          (row.getAttribute('data-salary')||'') + '</td><td>' +
                          (row.getAttribute('data-district')||'') + '</td></tr>';
+                } else if (item && typeof item === 'object' && item.company) {
+                    // 该岗位不在当前面板里（往期投的），用记录里存的字段显示
+                    h += '<tr><td>' + (item.company||'') + '</td><td>' +
+                         (item.title||'') + '</td><td>—</td><td>—</td></tr>';
                 } else { h += '<tr><td colspan="4">' + id + '</td></tr>'; }
             });
             c.innerHTML = h + '</tbody></table>';
@@ -1684,6 +1837,7 @@ __ROWS__
             var log = getLog(); log.count = Math.max(0, log.count - 1); setLog(log); renderCounter();
         });
         document.getElementById('btnShowApplied').addEventListener('click', function(){ showModal('appliedModal','appliedListContent', getApplied()); });
+    document.getElementById('btnExportApplied').addEventListener('click', exportApplied);
         document.getElementById('btnShowIgnored').addEventListener('click', function(){ showModal('ignoredModal','ignoredListContent', getIgnored()); });
         document.getElementById('modalCloseApplied').addEventListener('click', function(){ document.getElementById('appliedModal').classList.remove('active'); });
         document.getElementById('modalCloseIgnored').addEventListener('click', function(){ document.getElementById('ignoredModal').classList.remove('active'); });
@@ -1831,6 +1985,30 @@ def main():
         scored = sub.apply(lambda r: pd.Series(score_row(r, profile)), axis=1)
         for col in ['match_score', 'detail_scores', 'company_tag', 'active_tag']:
             sub[col] = scored[col]
+
+        # --- 已投递去重：跳过 applied_jobs.csv 里记过的岗位 ---
+        applied_links, applied_ids = _load_applied()
+        if applied_links or applied_ids:
+            n_before = len(sub)
+            keep = ~(
+                sub['job_link'].astype(str).str.split('?').str[0].isin(applied_links)
+                | sub['job_key'].astype(str).isin(applied_ids)
+            )
+            sub = sub[keep]
+            if len(sub) < n_before:
+                print(f"   已跳过 {n_before - len(sub)} 个投过的岗位"
+                      f"（来自 {os.path.basename(APPLIED_CSV)}）")
+
+        # --- HR 活跃度过滤：太不活跃的岗位不生成话术 ---
+        # 依据：实测 49 份投递中 17 份（35%）从未被打开，
+        # 主要就是发给了一两个月没上线的 HR——生成话术纯属浪费 API。
+        stale = sub['active_tag'].map(is_hr_stale)
+        if stale.any():
+            names = sub.loc[stale, 'active_tag'].value_counts().to_dict()
+            detail = '、'.join(f'{k} {v}个' for k, v in names.items())
+            print(f"   已跳过 {int(stale.sum())} 个 HR 长期不在线的岗位（{detail}）")
+            sub = sub[~stale]
+
         sub = sub.sort_values('match_score', ascending=False)
 
         print(f"   生成招呼语中（{min(len(sub), GREETING_LIMIT)} 条）…")
