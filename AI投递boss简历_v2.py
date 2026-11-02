@@ -1147,6 +1147,9 @@ _CAPABILITIES = [
          '让程序自己去页面上取数，不用人一条条抄，采完就是整理好的表格',
          '做过网页数据自动抓取，把原来手工搬数据的活交给程序',
      ],
+     # metric 里的数字必须和简历一致（简历项目描述里写的就是这几个数），
+     # 否则 HR 对着简历会发现对不上。改简历时记得同步这里。
+     'metric': '采了 300+ 条岗位记录、21 万字 JD',
      'keys': ['cdp', '爬虫', '采集', '抓取', 'selenium', 'playwright']},
     {'level': 'strong', 'name': '匹配排序算法',
      'says': [
@@ -1154,12 +1157,21 @@ _CAPABILITIES = [
          '写过一套打分排序逻辑，自动把最相关的排在前面，不用一条条看',
          '用相似度算法给信息自动排序，把人工筛选的活减掉大半',
      ],
+     'metric': '在 220+ 个岗位里自动排出优先级',
      'keys': ['tf-idf', '相似度', '排序', '匹配算法', '召回', '检索排序']},
     {'level': 'strong', 'name': '无人值守自动化',
      'says': [
-         '做过定时自动运行的程序，导出、归档、发邮件全程不用人盯着，每天省下半小时',
+         '做过定时自动运行的程序，导出、归档、发邮件全程不用人盯着',
          '把每天重复的手工操作写成定时任务，跑完还自动发邮件通知，人不用守着',
          '写过无人值守的自动流程，到点自己跑，中间不需要人干预',
+     ],
+     # 这条在 QA 赛道几乎每条都会被选中（实测 86%），
+     # 只挂一个数字会让 85% 的话术都写「74 个时点」，又变模板。
+     # 所以给三个都真实（简历里有）的数字说法，按序轮换。
+     'metrics': [
+         '三条流水线，日均采集 74 个时点',
+         '三条流水线都打包成单文件 exe，双击即跑',
+         '导出、加时间戳、按日合并、发邮件四步全自动',
      ],
      'keys': ['自动化', '定时', '无人值守', 'rpa', '批量处理', '运维']},
     {'level': 'strong', 'name': 'Excel 数据处理',
@@ -1203,6 +1215,7 @@ _CAPABILITIES = [
          '用结构化提示词模板控制 AI 输出，同样的需求每次结果保持一致',
          '把提示词写成固定模板，让 AI 产出稳定可复现，而不是每次都不一样',
      ],
+     'metric': '30 项检查清单，出图一致性从 60% 提到 90% 以上',
      'keys': ['prompt', '提示词', 'aigc', '文生图', '生图', '多模态']},
     {'level': 'weak', 'name': '数据清洗与分析',
      'says': [
@@ -1226,6 +1239,19 @@ def cap_say(cap):
     i = _cap_cursor.get(cap['name'], 0)
     _cap_cursor[cap['name']] = i + 1
     return says[i % len(says)]
+
+
+def cap_metric(cap):
+    """取这条能力的下一个数字说法（轮换）；没有数字返回空串。
+
+    和 cap_say 用同一个游标计数，保证「说法」和「数字」不会总是配对成同一组。
+    """
+    items = cap.get('metrics')
+    if items:
+        i = _cap_cursor.get(cap['name'] + '#m', 0)
+        _cap_cursor[cap['name'] + '#m'] = i + 1
+        return items[i % len(items)]
+    return cap.get('metric', '')
 
 
 def pick_capabilities(row, limit=3):
@@ -1409,13 +1435,17 @@ def generate_greeting(row, profile):
     weak_caps = [c for c in caps if c['level'] == 'weak']
 
     def _fmt(c):
-        matched = [k for k in c['keys'] if k in (jd + title).lower()]
         # 只有岗位 JD 真的提到某项英文技术时，才把它作为「可提及的技术名」给出来；
         # JD 没提的就不给，避免模型在句尾硬贴一个对方用不上的名词。
         tech = [k for k in c['keys'] if k in jd.lower() and re.match(r'^[A-Za-z]', k)]
         line = f"   · {c['name']}：{cap_say(c)}"
+        # 带真实数字的能力，把数字一并给模型（HR 扫一眼能记住的就是数字）。
+        # 只给简历里写过的数字，避免话术和简历对不上。
+        _m = cap_metric(c)
+        if _m:
+            line += f"\n     数字：{_m}"
         if tech:
-            line += f"（岗位提到 {('、'.join(tech[:2]))}，可以顺带提一下）"
+            line += f"\n     （岗位提到 {('、'.join(tech[:2]))}，可以顺带提一下）"
         return line
 
     strong_txt = '\n'.join(_fmt(c) for c in strong_caps) or '   （无）'
@@ -1475,6 +1505,12 @@ def generate_greeting(row, profile):
      换落点（方便核对 / 省掉翻资料的时间 / 不用再逐条找）。
    - 标注了「岗位提到 XX」的，可以顺带提一下那个技术名；
      没标注的就不要硬塞技术名，对方用不上。
+   - **候选里标了「数字：」的，把这组数字说出来。**
+     HR 三秒扫一条，能记住的往往就是一个数字。数字比形容词有力得多：
+     反例「做过无人值守的自动化程序，每天重复的操作都自动跑了」
+     正例「三条流水线，日均采集 74 个时点」
+     **没标数字的能力就不要自己编一个**，编出来和简历对不上。
+   - 一条话术里最多出现一组数字，别堆两个以上。
 {tech_rule}
 【风格】
 - 像人在跟人说话，不要写成简历摘要
